@@ -38,8 +38,7 @@ pipeline {
 
     environment {
         GITHUB_REPO_URL = 'https://github.com/mrDanh11/yas_cd.git'
-        // Jenkins Credential ID 'dockerhub-username' must store your Docker Hub username as a secret text
-        DOCKERHUB_USER  = credentials('dockerhub-username')
+        DOCKERHUB_USER  = credentials('dockerhub-credentials')
         K8S_NAMESPACE   = 'yas-dev'
         DOMAIN          = 'yas.local.com'
     }
@@ -111,8 +110,8 @@ pipeline {
 
                             // Docker Hub image pushed by CI workflow (ci-branch-build.yaml)
                             env["TAG_${svc.paramName}"]  = sha
-                            env["REPO_${svc.paramName}"] = "${DOCKERHUB_USER}/yas-${svc.dirName}"
-                            echo "  [${svc.dirName}]  branch=${branch}  →  ${DOCKERHUB_USER}/yas-${svc.dirName}:${sha.take(12)}..."
+                            env["REPO_${svc.paramName}"] = "${DOCKERHUB_USER_USR}/yas-${svc.dirName}"
+                            echo "  [${svc.dirName}]  branch=${branch}  →  ${DOCKERHUB_USER_USR}/yas-${svc.dirName}:${sha.take(12)}..."
                         }
                     }
                 }
