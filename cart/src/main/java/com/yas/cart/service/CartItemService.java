@@ -44,16 +44,6 @@ public class CartItemService {
         return cartItemMapper.toGetVm(cartItem);
     }
 
-    @Transactional
-    public CartItemGetVm updateCartItem(Long productId, CartItemPutVm cartItemPutVm) {
-        validateProduct(productId);
-
-        String currentUserId = AuthenticationUtils.extractUserId();
-        CartItem cartItem = cartItemMapper.toCartItem(currentUserId, productId, cartItemPutVm.quantity());
-
-        CartItem savedCartItem = cartItemRepository.save(cartItem);
-        return cartItemMapper.toGetVm(savedCartItem);
-    }
 
     public List<CartItemGetVm> getCartItems() {
         String currentUserId = AuthenticationUtils.extractUserId();
@@ -86,6 +76,17 @@ public class CartItemService {
         List<CartItem> updatedCartItems = cartItemRepository.saveAll(cartItemsToAdjust);
 
         return cartItemMapper.toGetVms(updatedCartItems);
+    }
+
+    @Transactional
+    public CartItemGetVm updateCartItem(Long productId, CartItemPutVm cartItemPutVm) {
+        validateProduct(productId);
+
+        String currentUserId = AuthenticationUtils.extractUserId();
+        CartItem cartItem = cartItemMapper.toCartItem(currentUserId, productId, cartItemPutVm.quantity());
+
+        CartItem savedCartItem = cartItemRepository.save(cartItem);
+        return cartItemMapper.toGetVm(savedCartItem);
     }
 
     @Transactional

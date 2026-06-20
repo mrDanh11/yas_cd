@@ -114,7 +114,7 @@ pipeline {
     post {
         success {
             echo "CI build completed. Images are ready on Docker Hub with tag: ${GIT_COMMIT}"
-        }
+        } 
         failure {
             echo "CI build failed. Check Maven build or Docker push logs above."
         }

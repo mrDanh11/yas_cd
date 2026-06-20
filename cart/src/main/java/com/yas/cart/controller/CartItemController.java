@@ -28,13 +28,6 @@ public class CartItemController {
         return ResponseEntity.ok(cartItemGetVm);
     }
 
-    @PutMapping("/storefront/cart/items/{productId}")
-    public ResponseEntity<CartItemGetVm> updateCartItem(@PathVariable Long productId,
-                                                        @Valid @RequestBody CartItemPutVm cartItemPutVm) {
-        CartItemGetVm cartItemGetVm = cartItemService.updateCartItem(productId, cartItemPutVm);
-        return ResponseEntity.ok(cartItemGetVm);
-    }
-
     @GetMapping("/storefront/cart/items")
     public ResponseEntity<List<CartItemGetVm>> getCartItems() {
         List<CartItemGetVm> cartItemGetVms = cartItemService.getCartItems();
@@ -46,6 +39,13 @@ public class CartItemController {
         @RequestBody List<@Valid CartItemDeleteVm> cartItemDeleteVms) {
         List<CartItemGetVm> cartItemGetVms = cartItemService.deleteOrAdjustCartItem(cartItemDeleteVms);
         return ResponseEntity.ok(cartItemGetVms);
+    }
+ 
+    @PutMapping("/storefront/cart/items/{productId}")
+    public ResponseEntity<CartItemGetVm> updateCartItem(@PathVariable Long productId,
+                                                        @Valid @RequestBody CartItemPutVm cartItemPutVm) {
+        CartItemGetVm cartItemGetVm = cartItemService.updateCartItem(productId, cartItemPutVm);
+        return ResponseEntity.ok(cartItemGetVm);
     }
 
     @DeleteMapping("/storefront/cart/items/{productId}")

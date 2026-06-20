@@ -50,25 +50,9 @@ public class CustomerService {
         return passwordCredentials;
     }
 
-    public CustomerListVm getCustomers(int pageNo) {
-        try {
-            List<CustomerAdminVm> result = keycloak.realm(keycloakPropsConfig.getRealm()).users()
-                .search(null, pageNo * USER_PER_PAGE, USER_PER_PAGE).stream()
-                .filter(UserRepresentation::isEnabled)
-                .map(CustomerAdminVm::fromUserRepresentation)
-                .toList();
-            int totalUser = result.size();
-
-            return new CustomerListVm(totalUser, result, (totalUser + USER_PER_PAGE - 1) / USER_PER_PAGE);
-        } catch (ForbiddenException exception) {
-            throw new AccessDeniedException(
-                String.format(ERROR_FORMAT, exception.getMessage(), keycloakPropsConfig.getResource()));
-        }
-    }
-
     public void updateCustomer(String id, CustomerProfileRequestVm requestVm) {
-        UserRepresentation userRepresentation =
-            keycloak.realm(keycloakPropsConfig.getRealm()).users().get(id).toRepresentation();
+        UserRepresentation userRepresentation = keycloak.realm(keycloakPropsConfig.getRealm()).users().get(id)
+                .toRepresentation();
         if (userRepresentation != null) {
             userRepresentation.setFirstName(requestVm.firstName());
             userRepresentation.setLastName(requestVm.lastName());
@@ -82,8 +66,8 @@ public class CustomerService {
     }
 
     public void deleteCustomer(String id) {
-        UserRepresentation userRepresentation =
-            keycloak.realm(keycloakPropsConfig.getRealm()).users().get(id).toRepresentation();
+        UserRepresentation userRepresentation = keycloak.realm(keycloakPropsConfig.getRealm()).users().get(id)
+                .toRepresentation();
         if (userRepresentation != null) {
             RealmResource realmResource = keycloak.realm(keycloakPropsConfig.getRealm());
             UserResource userResource = realmResource.users().get(id);
@@ -97,8 +81,8 @@ public class CustomerService {
     public CustomerAdminVm getCustomerByEmail(String email) {
         try {
             if (EmailValidator.getInstance().isValid(email)) {
-                List<UserRepresentation> searchResult =
-                    keycloak.realm(keycloakPropsConfig.getRealm()).users().search(email, true);
+                List<UserRepresentation> searchResult = keycloak.realm(keycloakPropsConfig.getRealm()).users()
+                        .search(email, true);
                 if (searchResult.isEmpty()) {
                     throw new NotFoundException(Constants.ErrorCode.USER_WITH_EMAIL_NOT_FOUND, email);
                 }
@@ -108,18 +92,34 @@ public class CustomerService {
             }
         } catch (ForbiddenException exception) {
             throw new AccessDeniedException(
-                String.format(ERROR_FORMAT, exception.getMessage(), keycloakPropsConfig.getResource()));
+                    String.format(ERROR_FORMAT, exception.getMessage(), keycloakPropsConfig.getResource()));
         }
     }
 
     public CustomerVm getCustomerProfile(String userId) {
         try {
             return CustomerVm.fromUserRepresentation(
-                keycloak.realm(keycloakPropsConfig.getRealm()).users().get(userId).toRepresentation());
+                    keycloak.realm(keycloakPropsConfig.getRealm()).users().get(userId).toRepresentation());
 
         } catch (ForbiddenException exception) {
             throw new AccessDeniedException(
-                String.format(ERROR_FORMAT, exception.getMessage(), keycloakPropsConfig.getResource()));
+                    String.format(ERROR_FORMAT, exception.getMessage(), keycloakPropsConfig.getResource()));
+        }
+    }
+
+    public CustomerListVm getCustomers(int pageNo) {
+        try {
+            List<CustomerAdminVm> result = keycloak.realm(keycloakPropsConfig.getRealm()).users()
+                    .search(null, pageNo * USER_PER_PAGE, USER_PER_PAGE).stream()
+                    .filter(UserRepresentation::isEnabled)
+                    .map(CustomerAdminVm::fromUserRepresentation)
+                    .toList();
+            int totalUser = result.size();
+
+            return new CustomerListVm(totalUser, result, (totalUser + USER_PER_PAGE - 1) / USER_PER_PAGE);
+        } catch (ForbiddenException exception) {
+            throw new AccessDeniedException(
+                    String.format(ERROR_FORMAT, exception.getMessage(), keycloakPropsConfig.getResource()));
         }
     }
 
