@@ -1,0 +1,243 @@
+// ============================================================
+// JOB: developer_build
+// PURPOSE: Deploy any service from a specific branch for testing.
+//          All other services use default 'main' (latest) images.
+//
+// EXAMPLE USE CASE:
+//   Developer is working on branch 'dev_tax_service'.
+//   They fill:
+//     - tax = dev_tax_service
+//     - (leave all others as 'main')
+//   Jenkins will deploy tax from dev_tax_service + all others from main.
+// ============================================================
+
+pipeline {
+    agent any
+
+    parameters {
+        // One parameter per service — developer inputs the branch name.
+        // Default 'main' means: use the stable latest image.
+        string(name: 'cart',           defaultValue: 'main', description: 'Branch for cart service')
+        string(name: 'customer',       defaultValue: 'main', description: 'Branch for customer service')
+        string(name: 'inventory',      defaultValue: 'main', description: 'Branch for inventory service')
+        string(name: 'location',       defaultValue: 'main', description: 'Branch for location service')
+        string(name: 'media',          defaultValue: 'main', description: 'Branch for media service')
+        string(name: 'order',          defaultValue: 'main', description: 'Branch for order service')
+        string(name: 'payment',        defaultValue: 'main', description: 'Branch for payment service')
+        string(name: 'payment_paypal', defaultValue: 'main', description: 'Branch for payment-paypal service')
+        string(name: 'product',        defaultValue: 'main', description: 'Branch for product service')
+        string(name: 'promotion',      defaultValue: 'main', description: 'Branch for promotion service')
+        string(name: 'rating',         defaultValue: 'main', description: 'Branch for rating service')
+        string(name: 'recommendation', defaultValue: 'main', description: 'Branch for recommendation service')
+        string(name: 'search',         defaultValue: 'main', description: 'Branch for search service')
+        string(name: 'tax',            defaultValue: 'main', description: 'Branch for tax service')
+        string(name: 'webhook',        defaultValue: 'main', description: 'Branch for webhook service')
+        string(name: 'backoffice_bff', defaultValue: 'main', description: 'Branch for backoffice-bff service')
+        string(name: 'storefront_bff', defaultValue: 'main', description: 'Branch for storefront-bff service')
+    }
+
+    environment {
+        GITHUB_REPO_URL = 'https://github.com/mrDanh11/yas_cd.git'
+        // Jenkins Credential ID 'dockerhub-username' must store your Docker Hub username as a secret text
+        DOCKERHUB_USER  = credentials('dockerhub-username')
+        K8S_NAMESPACE   = 'yas-dev'
+        DOMAIN          = 'yas.local.com'
+    }
+
+    stages {
+        // ----------------------------------------------------------
+        // STAGE 1: Checkout source (needed for Helm charts)
+        // ----------------------------------------------------------
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        // ----------------------------------------------------------
+        // STAGE 2: For each service, resolve the Docker image tag.
+        //   - branch == 'main'  →  tag = 'latest'  (stable image)
+        //   - branch != 'main'  →  tag = commit SHA (built by CI)
+        // ----------------------------------------------------------
+        stage('Resolve Image Tags') {
+            steps {
+                script {
+                    // List of all deployable services
+                    // paramName: Jenkins parameter name
+                    // dirName:   service directory / Helm chart name
+                    def serviceConfigs = [
+                        [paramName: 'cart',           dirName: 'cart'],
+                        [paramName: 'customer',        dirName: 'customer'],
+                        [paramName: 'inventory',       dirName: 'inventory'],
+                        [paramName: 'location',        dirName: 'location'],
+                        [paramName: 'media',           dirName: 'media'],
+                        [paramName: 'order',           dirName: 'order'],
+                        [paramName: 'payment',         dirName: 'payment'],
+                        [paramName: 'payment_paypal',  dirName: 'payment-paypal'],
+                        [paramName: 'product',         dirName: 'product'],
+                        [paramName: 'promotion',       dirName: 'promotion'],
+                        [paramName: 'rating',          dirName: 'rating'],
+                        [paramName: 'recommendation',  dirName: 'recommendation'],
+                        [paramName: 'search',          dirName: 'search'],
+                        [paramName: 'tax',             dirName: 'tax'],
+                        [paramName: 'webhook',         dirName: 'webhook'],
+                        [paramName: 'backoffice_bff',  dirName: 'backoffice-bff'],
+                        [paramName: 'storefront_bff',  dirName: 'storefront-bff'],
+                    ]
+
+                    echo "============================================"
+                    echo "  Resolving image tags for all services"
+                    echo "============================================"
+
+                    serviceConfigs.each { svc ->
+                        def branch = params[svc.paramName]?.trim() ?: 'main'
+
+                        if (branch == 'main') {
+                            // Use the stable image from ghcr.io (existing CI pushes here on main)
+                            env["TAG_${svc.paramName}"]  = 'latest'
+                            env["REPO_${svc.paramName}"] = "ghcr.io/nashtech-garage/yas-${svc.dirName}"
+                            echo "  [${svc.dirName}]  branch=main  →  ghcr.io/nashtech-garage/yas-${svc.dirName}:latest"
+                        } else {
+                            // Resolve the latest commit SHA on that branch from GitHub
+                            def sha = sh(
+                                script: "git ls-remote '${GITHUB_REPO_URL}' 'refs/heads/${branch}' | awk '{print \$1}'",
+                                returnStdout: true
+                            ).trim()
+
+                            if (!sha) {
+                                error "Branch '${branch}' not found in repository for service '${svc.dirName}'. " +
+                                      "Make sure the branch exists and CI has built the image."
+                            }
+
+                            // Docker Hub image pushed by CI workflow (ci-branch-build.yaml)
+                            env["TAG_${svc.paramName}"]  = sha
+                            env["REPO_${svc.paramName}"] = "${DOCKERHUB_USER}/yas-${svc.dirName}"
+                            echo "  [${svc.dirName}]  branch=${branch}  →  ${DOCKERHUB_USER}/yas-${svc.dirName}:${sha.take(12)}..."
+                        }
+                    }
+                }
+            }
+        }
+
+        // ----------------------------------------------------------
+        // STAGE 3: Deploy all services to yas-dev namespace via Helm
+        // ----------------------------------------------------------
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    def serviceConfigs = [
+                        [paramName: 'cart',           dirName: 'cart'],
+                        [paramName: 'customer',        dirName: 'customer'],
+                        [paramName: 'inventory',       dirName: 'inventory'],
+                        [paramName: 'location',        dirName: 'location'],
+                        [paramName: 'media',           dirName: 'media'],
+                        [paramName: 'order',           dirName: 'order'],
+                        [paramName: 'payment',         dirName: 'payment'],
+                        [paramName: 'payment_paypal',  dirName: 'payment-paypal'],
+                        [paramName: 'product',         dirName: 'product'],
+                        [paramName: 'promotion',       dirName: 'promotion'],
+                        [paramName: 'rating',          dirName: 'rating'],
+                        [paramName: 'recommendation',  dirName: 'recommendation'],
+                        [paramName: 'search',          dirName: 'search'],
+                        [paramName: 'tax',             dirName: 'tax'],
+                        [paramName: 'webhook',         dirName: 'webhook'],
+                        [paramName: 'backoffice_bff',  dirName: 'backoffice-bff'],
+                        [paramName: 'storefront_bff',  dirName: 'storefront-bff'],
+                    ]
+
+                    def chartsPath = "${WORKSPACE}/k8s/charts"
+
+                    serviceConfigs.each { svc ->
+                        def imageRepo = env["REPO_${svc.paramName}"]
+                        def imageTag  = env["TAG_${svc.paramName}"]
+
+                        echo ""
+                        echo "  Deploying: ${svc.dirName} | ${imageRepo}:${imageTag}"
+
+                        sh """
+                            # Build Helm sub-chart dependencies (backend library chart)
+                            helm dependency build ${chartsPath}/${svc.dirName}
+
+                            # Deploy/update the release in yas-dev namespace
+                            helm upgrade --install ${svc.dirName} ${chartsPath}/${svc.dirName} \
+                                --namespace ${K8S_NAMESPACE} \
+                                --create-namespace \
+                                --set backend.image.repository=${imageRepo} \
+                                --set backend.image.tag=${imageTag} \
+                                --set backend.service.type=NodePort \
+                                --set backend.ingress.enabled=false \
+                                --timeout 3m \
+                                --wait
+                        """
+                    }
+                }
+            }
+        }
+
+        // ----------------------------------------------------------
+        // STAGE 4: Print NodePort URLs for the developer to use
+        // ----------------------------------------------------------
+        stage('Print Access URLs') {
+            steps {
+                script {
+                    // Get the Worker Node's internal IP
+                    def workerIP = sh(
+                        script: """
+                            kubectl get nodes --no-headers \
+                                -l '!node-role.kubernetes.io/control-plane' \
+                                -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}'
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    if (!workerIP) {
+                        // Fallback: get any non-master node
+                        workerIP = sh(
+                            script: """kubectl get nodes --no-headers | grep -v master | awk 'NR==1{print \$1}' | \
+                                       xargs -I{} kubectl get node {} -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}'""",
+                            returnStdout: true
+                        ).trim()
+                    }
+
+                    def allServices = [
+                        'cart', 'customer', 'inventory', 'location', 'media',
+                        'order', 'payment', 'payment-paypal', 'product', 'promotion',
+                        'rating', 'recommendation', 'search', 'tax', 'webhook',
+                        'backoffice-bff', 'storefront-bff'
+                    ]
+
+                    def sep  = "=".multiply(65)
+                    def sep2 = "-".multiply(65)
+                    def msg  = "\n${sep}\n"
+                    msg     += "  DEVELOPER ACCESS INFORMATION\n"
+                    msg     += "${sep}\n\n"
+                    msg     += "  Step 1 - Add to your /etc/hosts (or C:\\Windows\\System32\\drivers\\etc\\hosts):\n"
+                    msg     += "    ${workerIP}  ${DOMAIN}\n\n"
+                    msg     += "  Step 2 - Service NodePort URLs:\n"
+                    msg     += "${sep2}\n"
+
+                    allServices.each { svcName ->
+                        def nodePort = sh(
+                            script: "kubectl get svc ${svcName} -n ${K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo 'N/A'",
+                            returnStdout: true
+                        ).trim()
+                        def padded = svcName.padRight(25)
+                        msg += "    ${padded}  http://${workerIP}:${nodePort}\n"
+                    }
+
+                    msg += "${sep}"
+                    echo msg
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Developer build deployed to namespace '${K8S_NAMESPACE}'. Happy testing!"
+        }
+        failure {
+            echo "Deployment failed. Run 'cleanup_developer_build' job to remove partial deployment."
+        }
+    }
+}

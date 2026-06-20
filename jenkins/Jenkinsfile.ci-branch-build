@@ -1,0 +1,141 @@
+// ============================================================
+// JOB: ci-branch-build  (Multibranch Pipeline)
+// PURPOSE: Detect which services changed on the current branch,
+//          build their Docker images, and push to Docker Hub.
+//          Image tag = full commit SHA (for traceability).
+//          On main branch, also tags as 'latest'.
+//
+// PREREQUISITE Jenkins credentials:
+//   ID 'dockerhub-credentials' → Username/Password
+//       Username = Docker Hub username
+//       Password = Docker Hub Access Token
+//
+// PREREQUISITE Jenkins tools:
+//   - Maven (configured in Global Tool Configuration, name: 'Maven')
+//   - Docker (available on the agent)
+// ============================================================
+
+pipeline {
+    agent any
+
+    tools {
+        maven 'Maven'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Detect Changes & Build Images') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-credentials',
+                    usernameVariable: 'DOCKERHUB_USER',
+                    passwordVariable: 'DOCKERHUB_TOKEN'
+                )]) {
+                    sh '''
+                        COMMIT_SHA=$(git rev-parse HEAD)
+                        BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+
+                        echo "============================================"
+                        echo "  Branch : ${BRANCH_NAME}"
+                        echo "  Commit : ${COMMIT_SHA}"
+                        echo "  Docker : ${DOCKERHUB_USER}"
+                        echo "============================================"
+
+                        # Login to Docker Hub
+                        echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USER}" --password-stdin
+
+                        # Detect changed files vs previous commit
+                        if git rev-parse HEAD~1 >/dev/null 2>&1; then
+                            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+                        else
+                            # First commit: treat all files as changed
+                            CHANGED_FILES=$(git show --name-only --format="" HEAD)
+                        fi
+
+                        echo "Changed files:"
+                        echo "${CHANGED_FILES}"
+                        echo ""
+
+                        SERVICES=(
+                            "cart"
+                            "customer"
+                            "inventory"
+                            "location"
+                            "media"
+                            "order"
+                            "payment"
+                            "payment-paypal"
+                            "product"
+                            "promotion"
+                            "rating"
+                            "recommendation"
+                            "search"
+                            "tax"
+                            "webhook"
+                            "backoffice-bff"
+                            "storefront-bff"
+                            "sampledata"
+                        )
+
+                        BUILT_SERVICES=""
+
+                        for SERVICE in "${SERVICES[@]}"; do
+                            if echo "${CHANGED_FILES}" | grep -q "^${SERVICE}/"; then
+                                echo "========================================="
+                                echo "  Building: ${SERVICE}"
+                                echo "========================================="
+
+                                # Build JAR (skip tests — tests run in separate CI job)
+                                mvn clean package -pl "${SERVICE}" -am -DskipTests -q
+
+                                IMAGE="${DOCKERHUB_USER}/yas-${SERVICE}"
+
+                                # Build Docker image
+                                docker build -t "${IMAGE}:${COMMIT_SHA}" "./${SERVICE}"
+
+                                # Push image with commit SHA tag
+                                docker push "${IMAGE}:${COMMIT_SHA}"
+                                echo "  Pushed: ${IMAGE}:${COMMIT_SHA}"
+
+                                # On main branch: also tag and push as 'latest'
+                                if [ "${BRANCH_NAME}" = "main" ]; then
+                                    docker tag "${IMAGE}:${COMMIT_SHA}" "${IMAGE}:latest"
+                                    docker push "${IMAGE}:latest"
+                                    echo "  Pushed: ${IMAGE}:latest"
+                                fi
+
+                                BUILT_SERVICES="${BUILT_SERVICES} ${SERVICE}"
+
+                                # Clean up local image to save disk space
+                                docker rmi "${IMAGE}:${COMMIT_SHA}" || true
+                            fi
+                        done
+
+                        docker logout
+
+                        if [ -z "${BUILT_SERVICES}" ]; then
+                            echo "No service directories were modified. No Docker images built."
+                        else
+                            echo ""
+                            echo "Successfully built and pushed:${BUILT_SERVICES}"
+                        fi
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "CI build completed. Images are ready on Docker Hub with tag: ${GIT_COMMIT}"
+        }
+        failure {
+            echo "CI build failed. Check Maven build or Docker push logs above."
+        }
+    }
+}

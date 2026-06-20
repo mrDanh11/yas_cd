@@ -1,0 +1,108 @@
+// ============================================================
+// JOB: cleanup_developer_build
+// PURPOSE: Remove all Helm releases deployed by developer_build
+//          from the yas-dev namespace.
+//
+// Run this job when you are done testing your branch and want
+// to free up cluster resources.
+// ============================================================
+
+pipeline {
+    agent any
+
+    parameters {
+        booleanParam(
+            name: 'CONFIRM_CLEANUP',
+            defaultValue: false,
+            description: 'CHECK THIS BOX to confirm: all releases in yas-dev will be removed.'
+        )
+    }
+
+    environment {
+        K8S_NAMESPACE = 'yas-dev'
+    }
+
+    stages {
+        // ----------------------------------------------------------
+        // STAGE 1: Safety gate — user must explicitly confirm
+        // ----------------------------------------------------------
+        stage('Confirm Cleanup') {
+            steps {
+                script {
+                    if (!params.CONFIRM_CLEANUP) {
+                        error "Cleanup cancelled: CONFIRM_CLEANUP checkbox was not checked. " +
+                              "Re-run this job and check the box to confirm deletion."
+                    }
+                    echo "Cleanup confirmed by user. Removing all deployments from namespace: ${K8S_NAMESPACE}"
+                }
+            }
+        }
+
+        // ----------------------------------------------------------
+        // STAGE 2: List what is currently deployed (before cleanup)
+        // ----------------------------------------------------------
+        stage('List Current Deployments') {
+            steps {
+                sh """
+                    echo "Current Helm releases in namespace '${K8S_NAMESPACE}':"
+                    helm list --namespace ${K8S_NAMESPACE} 2>/dev/null || echo "(namespace not found or no releases)"
+                    echo ""
+                    echo "Current pods:"
+                    kubectl get pods --namespace ${K8S_NAMESPACE} 2>/dev/null || echo "(namespace not found)"
+                """
+            }
+        }
+
+        // ----------------------------------------------------------
+        // STAGE 3: Uninstall all Helm releases
+        // ----------------------------------------------------------
+        stage('Remove Helm Releases') {
+            steps {
+                script {
+                    def releases = [
+                        'cart', 'customer', 'inventory', 'location', 'media',
+                        'order', 'payment', 'payment-paypal', 'product', 'promotion',
+                        'rating', 'recommendation', 'search', 'tax', 'webhook',
+                        'backoffice-bff', 'storefront-bff', 'sampledata'
+                    ]
+
+                    releases.each { release ->
+                        echo "  Removing: ${release}"
+                        sh """
+                            helm uninstall ${release} \
+                                --namespace ${K8S_NAMESPACE} \
+                                --ignore-not-found \
+                                --wait \
+                                --timeout 2m || true
+                        """
+                    }
+                }
+            }
+        }
+
+        // ----------------------------------------------------------
+        // STAGE 4: Verify cleanup is complete
+        // ----------------------------------------------------------
+        stage('Verify Cleanup') {
+            steps {
+                sh """
+                    echo "Remaining Helm releases in '${K8S_NAMESPACE}':"
+                    helm list --namespace ${K8S_NAMESPACE} 2>/dev/null || echo "(none)"
+
+                    echo ""
+                    echo "Remaining pods:"
+                    kubectl get pods --namespace ${K8S_NAMESPACE} 2>/dev/null || echo "(namespace gone or no pods)"
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Cleanup complete. All developer deployments removed from '${K8S_NAMESPACE}'."
+        }
+        failure {
+            echo "Cleanup encountered errors. Check logs and remove remaining resources manually."
+        }
+    }
+}
