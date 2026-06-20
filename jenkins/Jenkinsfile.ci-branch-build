@@ -61,30 +61,11 @@ pipeline {
                         echo "${CHANGED_FILES}"
                         echo ""
 
-                        SERVICES=(
-                            "cart"
-                            "customer"
-                            "inventory"
-                            "location"
-                            "media"
-                            "order"
-                            "payment"
-                            "payment-paypal"
-                            "product"
-                            "promotion"
-                            "rating"
-                            "recommendation"
-                            "search"
-                            "tax"
-                            "webhook"
-                            "backoffice-bff"
-                            "storefront-bff"
-                            "sampledata"
-                        )
+                        SERVICES="cart customer inventory location media order payment payment-paypal product promotion rating recommendation search tax webhook backoffice-bff storefront-bff sampledata"
 
                         BUILT_SERVICES=""
 
-                        for SERVICE in "${SERVICES[@]}"; do
+                        for SERVICE in $SERVICES; do
                             if echo "${CHANGED_FILES}" | grep -q "^${SERVICE}/"; then
                                 echo "========================================="
                                 echo "  Building: ${SERVICE}"
