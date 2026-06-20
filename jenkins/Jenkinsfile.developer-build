@@ -104,6 +104,7 @@ pipeline {
                                 --set backend.image.tag=${imageTag} \
                                 --set backend.service.type=NodePort \
                                 --set backend.ingress.enabled=false \
+                                --set backend.serviceMonitor.enabled=false \
                                 --timeout 3m \
                                 --wait
                         """
