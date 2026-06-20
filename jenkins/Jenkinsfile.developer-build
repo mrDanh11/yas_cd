@@ -94,20 +94,19 @@ pipeline {
 
                         echo "Deploying ${svc.dirName} | ${imageRepo}:${imageTag}"
 
+                        def helmCmd = "helm upgrade --install ${svc.dirName} ${chartsPath}/${svc.dirName}" +
+                            " --namespace ${K8S_NAMESPACE}" +
+                            " --create-namespace" +
+                            " --set backend.image.repository=${imageRepo}" +
+                            " --set backend.image.tag=${imageTag}" +
+                            " --set backend.service.type=NodePort" +
+                            " --set backend.ingress.enabled=false" +
+                            " --set backend.serviceMonitor.enabled=false" +
+                            " --timeout 3m --wait"
+
                         sh """
                             helm dependency build ${chartsPath}/${svc.dirName}
-
-                            helm upgrade --install ${svc.dirName} ${chartsPath}/${svc.dirName} \
-                                --namespace ${K8S_NAMESPACE} \
-                                --create-namespace \
-                                --set backend.image.repository=${imageRepo} \
-                                --set backend.image.tag=${imageTag} \
-                                --set backend.service.type=NodePort \
-                                --set backend.ingress.enabled=false \
-                                --set backend.serviceMonitor.enabled=false \
-
-                                --timeout 3m \
-                                --wait
+                            ${helmCmd}
                         """
                     }
                 }
