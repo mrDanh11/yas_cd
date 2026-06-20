@@ -45,6 +45,16 @@ pipeline {
             }
         }
 
+        stage('Prepare Dev Namespace') {
+            steps {
+                sh """
+                    helm upgrade --install yas-configuration ${WORKSPACE}/k8s/charts/yas-configuration \
+                        --namespace ${K8S_NAMESPACE} \
+                        --create-namespace
+                """
+            }
+        }
+
         stage('Resolve & Deploy') {
             steps {
                 script {
