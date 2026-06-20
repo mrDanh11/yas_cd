@@ -50,6 +50,19 @@ public class CustomerService {
         return passwordCredentials;
     }
 
+    public void deleteCustomer(String id) {
+        UserRepresentation userRepresentation = keycloak.realm(keycloakPropsConfig.getRealm()).users().get(id)
+                .toRepresentation();
+        if (userRepresentation != null) {
+            RealmResource realmResource = keycloak.realm(keycloakPropsConfig.getRealm());
+            UserResource userResource = realmResource.users().get(id);
+            userRepresentation.setEnabled(false);
+            userResource.update(userRepresentation);
+        } else {
+            throw new NotFoundException(Constants.ErrorCode.USER_NOT_FOUND);
+        }
+    }
+
     public void updateCustomer(String id, CustomerProfileRequestVm requestVm) {
         UserRepresentation userRepresentation = keycloak.realm(keycloakPropsConfig.getRealm()).users().get(id)
                 .toRepresentation();
@@ -59,19 +72,6 @@ public class CustomerService {
             userRepresentation.setEmail(requestVm.email());
             RealmResource realmResource = keycloak.realm(keycloakPropsConfig.getRealm());
             UserResource userResource = realmResource.users().get(id);
-            userResource.update(userRepresentation);
-        } else {
-            throw new NotFoundException(Constants.ErrorCode.USER_NOT_FOUND);
-        }
-    }
-
-    public void deleteCustomer(String id) {
-        UserRepresentation userRepresentation = keycloak.realm(keycloakPropsConfig.getRealm()).users().get(id)
-                .toRepresentation();
-        if (userRepresentation != null) {
-            RealmResource realmResource = keycloak.realm(keycloakPropsConfig.getRealm());
-            UserResource userResource = realmResource.users().get(id);
-            userRepresentation.setEnabled(false);
             userResource.update(userRepresentation);
         } else {
             throw new NotFoundException(Constants.ErrorCode.USER_NOT_FOUND);
@@ -88,6 +88,7 @@ public class CustomerService {
                 }
                 return CustomerAdminVm.fromUserRepresentation(searchResult.getFirst());
             } else {
+
                 throw new WrongEmailFormatException(Constants.ErrorCode.WRONG_EMAIL_FORMAT, email);
             }
         } catch (ForbiddenException exception) {

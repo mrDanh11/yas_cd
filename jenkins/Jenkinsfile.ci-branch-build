@@ -72,7 +72,8 @@ pipeline {
                                 echo "========================================="
 
                                 # Build JAR (skip tests — tests run in separate CI job)
-                                mvn clean package -pl "${SERVICE}" -am -DskipTests -q
+                                mvn clean package -pl "${SERVICE}" -am -DskipTests -q \
+                                    -Dmaven.repo.local="${WORKSPACE}/.m2/repository"
 
                                 IMAGE="${DOCKERHUB_USER}/yas-${SERVICE}"
 
