@@ -114,7 +114,7 @@ public class OrderService {
                 .billingAddressId(billOrderAddress)
                 .checkoutId(orderPostVm.checkoutId())
                 .build();
-        orderRepository.save(order);
+        Order savedOrder = orderRepository.save(order);
 
         Set<OrderItem> orderItems = orderPostVm.orderItemPostVms().stream()
                 .map(item -> OrderItem.builder()
@@ -123,12 +123,12 @@ public class OrderService {
                         .quantity(item.quantity())
                         .productPrice(item.productPrice())
                         .note(item.note())
-                        .orderId(order.getId())
+                        .orderId(savedOrder.getId())
                         .build())
                 .collect(Collectors.toSet());
         orderItemRepository.saveAll(orderItems);
 
-        OrderVm orderVm = OrderVm.fromModel(order, orderItems);
+        OrderVm orderVm = OrderVm.fromModel(savedOrder, orderItems);
         productService.subtractProductStockQuantity(orderVm);
         cartService.deleteCartItems(orderVm);
         acceptOrder(orderVm.id());
@@ -138,8 +138,8 @@ public class OrderService {
         orderItems.forEach(item -> {
             PromotionUsageVm promotionUsageVm = PromotionUsageVm.builder()
                     .productId(item.getProductId())
-                    .orderId(order.getId())
-                    .promotionCode(order.getCouponCode())
+                    .orderId(savedOrder.getId())
+                    .promotionCode(savedOrder.getCouponCode())
                     .build();
             promotionUsageVms.add(promotionUsageVm);
         });
