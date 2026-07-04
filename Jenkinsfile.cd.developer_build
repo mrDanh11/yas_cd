@@ -1,0 +1,145 @@
+properties([
+    parameters([
+        string(name: 'DOMAIN', defaultValue: 'yas.local.com', description: 'Domain name cho Ingress/Host configuration'),
+        string(name: 'DOCKER_HUB_USER', defaultValue: 'mrDanh11', description: 'Tên tài khoản Docker Hub chứa các image'),
+        string(name: 'MEDIA_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Media Service'),
+        string(name: 'PRODUCT_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Product Service'),
+        string(name: 'CART_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Cart Service'),
+        string(name: 'ORDER_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Order Service'),
+        string(name: 'CUSTOMER_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Customer Service'),
+        string(name: 'INVENTORY_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Inventory Service'),
+        string(name: 'LOCATION_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Location Service'),
+        string(name: 'PAYMENT_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Payment Service'),
+        string(name: 'PAYMENT_PAYPAL_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Payment-Paypal Service'),
+        string(name: 'PROMOTION_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Promotion Service'),
+        string(name: 'RATING_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Rating Service'),
+        string(name: 'SEARCH_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Search Service'),
+        string(name: 'TAX_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Tax Service'),
+        string(name: 'RECOMMENDATION_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Recommendation Service'),
+        string(name: 'WEBHOOK_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Webhook Service'),
+        string(name: 'SAMPLEDATA_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Sampledata Service'),
+        string(name: 'BACKOFFICE_BFF_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Backoffice BFF'),
+        string(name: 'STOREFRONT_BFF_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Storefront BFF'),
+        string(name: 'BACKOFFICE_UI_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Backoffice UI'),
+        string(name: 'STOREFRONT_UI_BRANCH', defaultValue: 'main', description: 'Nhánh muốn deploy cho Storefront UI')
+    ])
+])
+
+pipeline {
+    agent any
+
+    environment {
+        REPO_URL = 'https://github.com/mrDanh11/yas_cd.git'
+    }
+
+    stages {
+        stage('CD: Deploy Microservices') {
+            steps {
+                script {
+                    // Danh sách các service và nhánh cấu hình tương ứng
+                    def serviceList = [
+                        [name: 'media', branch: params.MEDIA_BRANCH, type: 'backend', dockerRepo: 'yas-media'],
+                        [name: 'product', branch: params.PRODUCT_BRANCH, type: 'backend', dockerRepo: 'yas-product'],
+                        [name: 'cart', branch: params.CART_BRANCH, type: 'backend', dockerRepo: 'yas-cart'],
+                        [name: 'order', branch: params.ORDER_BRANCH, type: 'backend', dockerRepo: 'yas-order'],
+                        [name: 'customer', branch: params.CUSTOMER_BRANCH, type: 'backend', dockerRepo: 'yas-customer'],
+                        [name: 'inventory', branch: params.INVENTORY_BRANCH, type: 'backend', dockerRepo: 'yas-inventory'],
+                        [name: 'location', branch: params.LOCATION_BRANCH, type: 'backend', dockerRepo: 'yas-location'],
+                        [name: 'payment', branch: params.PAYMENT_BRANCH, type: 'backend', dockerRepo: 'yas-payment'],
+                        [name: 'payment-paypal', branch: params.PAYMENT_PAYPAL_BRANCH, type: 'backend', dockerRepo: 'yas-payment-paypal'],
+                        [name: 'promotion', branch: params.PROMOTION_BRANCH, type: 'backend', dockerRepo: 'yas-promotion'],
+                        [name: 'rating', branch: params.RATING_BRANCH, type: 'backend', dockerRepo: 'yas-rating'],
+                        [name: 'search', branch: params.SEARCH_BRANCH, type: 'backend', dockerRepo: 'yas-search'],
+                        [name: 'tax', branch: params.TAX_BRANCH, type: 'backend', dockerRepo: 'yas-tax'],
+                        [name: 'recommendation', branch: params.RECOMMENDATION_BRANCH, type: 'backend', dockerRepo: 'yas-recommendation'],
+                        [name: 'webhook', branch: params.WEBHOOK_BRANCH, type: 'backend', dockerRepo: 'yas-webhook'],
+                        [name: 'sampledata', branch: params.SAMPLEDATA_BRANCH, type: 'backend', dockerRepo: 'yas-sampledata'],
+                        [name: 'backoffice-bff', branch: params.BACKOFFICE_BFF_BRANCH, type: 'backend', dockerRepo: 'yas-backoffice-bff'],
+                        [name: 'storefront-bff', branch: params.STOREFRONT_BFF_BRANCH, type: 'backend', dockerRepo: 'yas-storefront-bff'],
+                        [name: 'backoffice-ui', branch: params.BACKOFFICE_UI_BRANCH, type: 'ui', dockerRepo: 'yas-backoffice'],
+                        [name: 'storefront-ui', branch: params.STOREFRONT_UI_BRANCH, type: 'ui', dockerRepo: 'yas-storefront']
+                    ]
+
+                    // Triển khai cấu hình chung trước
+                    echo "Đang cập nhật yas-configuration..."
+                    dir("k8s/charts/yas-configuration") {
+                        sh "helm dependency build || true"
+                    }
+                    sh "helm upgrade --install yas-configuration ./k8s/charts/yas-configuration --namespace yas --create-namespace"
+
+                    // Lặp qua từng service để cài đặt
+                    for (int i = 0; i < serviceList.size(); i++) {
+                        def svc = serviceList[i]
+                        def branchName = svc.branch
+                        
+                        // Lấy tag ảnh phù hợp (Nếu là main/latest thì dùng latest, ngược lại lấy commit id của branch đó)
+                        def imageTag = resolveImageTag(branchName)
+                        
+                        echo "=========================================================="
+                        echo "Đang triển khai: ${svc.name} | Branch: ${branchName} | Tag: ${imageTag}"
+                        echo "=========================================================="
+
+                        // Build Helm dependencies
+                        dir("k8s/charts/${svc.name}") {
+                            sh "helm dependency build || true"
+                        }
+
+                        // Định nghĩa lệnh deploy với service type là NodePort
+                        if (svc.type == 'backend') {
+                            sh """
+                                helm upgrade --install ${svc.name} ./k8s/charts/${svc.name} \
+                                --namespace yas --create-namespace \
+                                --set backend.image.repository=${params.DOCKER_HUB_USER}/${svc.dockerRepo} \
+                                --set backend.image.tag=${imageTag} \
+                                --set backend.service.type=NodePort \
+                                --set backend.ingress.host="api.${params.DOMAIN}"
+                            """
+                        } else {
+                            // Dành cho UI (backoffice-ui, storefront-ui)
+                            sh """
+                                helm upgrade --install ${svc.name} ./k8s/charts/${svc.name} \
+                                --namespace yas --create-namespace \
+                                --set image.repository=${params.DOCKER_HUB_USER}/${svc.dockerRepo} \
+                                --set image.tag=${imageTag} \
+                                --set service.type=NodePort
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('CD: Display Ports') {
+            steps {
+                script {
+                    echo "=========================================================="
+                    echo "DANH SÁCH CỔNG TRUY CẬP (NODEPORT) CHO DEVELOPER:"
+                    echo "=========================================================="
+                    sh "kubectl get svc -n yas -o custom-columns=NAME:.metadata.name,TYPE:.spec.type,NODEPORT:.spec.ports[*].nodePort"
+                    echo "=========================================================="
+                    echo "Lưu ý: Developer sử dụng IP của K8s Worker node kèm cổng NODEPORT trên để truy cập và kiểm thử."
+                }
+            }
+        }
+    }
+}
+
+// Hàm để lấy commit hash ngắn (7 ký tự) của một nhánh từ xa
+def resolveImageTag(String branchName) {
+    if (branchName == 'main' || branchName == 'master' || branchName == 'latest' || branchName == '') {
+        return 'latest'
+    }
+    
+    try {
+        // Chạy lệnh git ls-remote để lấy commit hash
+        def commitHash = sh(script: "git ls-remote ${REPO_URL} refs/heads/${branchName} | cut -f1", returnStdout: true).trim()
+        if (commitHash && commitHash.length() >= 7) {
+            return commitHash.substring(0, 7)
+        }
+    } catch (Exception e) {
+        echo "Lỗi khi lấy commit hash của nhánh ${branchName}: ${e.message}"
+    }
+    
+    echo "Cảnh báo: Không thể giải quyết tag cho nhánh ${branchName}. Sử dụng mặc định 'latest'."
+    return 'latest'
+}
