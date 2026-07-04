@@ -1,0 +1,265 @@
+pipeline {
+    agent any
+
+    environment {
+        // Tên tài khoản Docker Hub của bạn
+        DOCKER_HUB_USER = 'mrDanh11'
+        DOCKER_CREDENTIALS_ID = 'docker-hub-credentials'
+    }
+
+    stages {
+        stage('Initialize') {
+            steps {
+                script {
+                    // Lấy Short Commit ID (7 ký tự đầu) làm tag
+                    env.GIT_COMMIT_TAG = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    echo "Git Commit Tag: ${env.GIT_COMMIT_TAG}"
+                }
+            }
+        }
+
+        // ==========================================
+        // CÁC DỊCH VỤ JAVA (BUILD MAVEN VÀ DOCKER)
+        // ==========================================
+        stage('CI: Media Service') {
+            when { changeset "media/**" }
+            steps {
+                script {
+                    def service = 'media'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Product Service') {
+            when { changeset "product/**" }
+            steps {
+                script {
+                    def service = 'product'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Cart Service') {
+            when { changeset "cart/**" }
+            steps {
+                script {
+                    def service = 'cart'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Order Service') {
+            when { changeset "order/**" }
+            steps {
+                script {
+                    def service = 'order'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Customer Service') {
+            when { changeset "customer/**" }
+            steps {
+                script {
+                    def service = 'customer'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Inventory Service') {
+            when { changeset "inventory/**" }
+            steps {
+                script {
+                    def service = 'inventory'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Location Service') {
+            when { changeset "location/**" }
+            steps {
+                script {
+                    def service = 'location'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Payment Service') {
+            when { changeset "payment/**" }
+            steps {
+                script {
+                    def service = 'payment'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Payment Paypal Service') {
+            when { changeset "payment-paypal/**" }
+            steps {
+                script {
+                    def service = 'payment-paypal'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Promotion Service') {
+            when { changeset "promotion/**" }
+            steps {
+                script {
+                    def service = 'promotion'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Rating Service') {
+            when { changeset "rating/**" }
+            steps {
+                script {
+                    def service = 'rating'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Search Service') {
+            when { changeset "search/**" }
+            steps {
+                script {
+                    def service = 'search'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Tax Service') {
+            when { changeset "tax/**" }
+            steps {
+                script {
+                    def service = 'tax'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Recommendation Service') {
+            when { changeset "recommendation/**" }
+            steps {
+                script {
+                    def service = 'recommendation'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Webhook Service') {
+            when { changeset "webhook/**" }
+            steps {
+                script {
+                    def service = 'webhook'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Sampledata Service') {
+            when { changeset "sampledata/**" }
+            steps {
+                script {
+                    def service = 'sampledata'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Backoffice BFF') {
+            when { changeset "backoffice-bff/**" }
+            steps {
+                script {
+                    def service = 'backoffice-bff'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        stage('CI: Storefront BFF') {
+            when { changeset "storefront-bff/**" }
+            steps {
+                script {
+                    def service = 'storefront-bff'
+                    sh "mvn --projects ${service} --also-make clean install -DskipTests"
+                    buildAndPushImage(service)
+                }
+            }
+        }
+
+        // ==========================================
+        // CÁC DỊCH VỤ FRONTEND NODEJS
+        // ==========================================
+        stage('CI: Storefront UI') {
+            when { changeset "storefront/**" }
+            steps {
+                script {
+                    buildAndPushImage('storefront')
+                }
+            }
+        }
+
+        stage('CI: Backoffice UI') {
+            when { changeset "backoffice/**" }
+            steps {
+                script {
+                    buildAndPushImage('backoffice')
+                }
+            }
+        }
+    }
+}
+
+def buildAndPushImage(String serviceDir) {
+    def dockerRepo = "${DOCKER_HUB_USER}/yas-${serviceDir}"
+    
+    withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+        sh "docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}"
+    }
+    
+    // Build & tag image với commit id
+    dir(serviceDir) {
+        sh "docker build -t ${dockerRepo}:${GIT_COMMIT_TAG} ."
+    }
+    
+    // Push image lên Docker Hub
+    sh "docker push ${dockerRepo}:${GIT_COMMIT_TAG}"
+    
+    // Nếu là nhánh main/master, tag và push thêm bản latest
+    if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master') {
+        sh "docker tag ${dockerRepo}:${GIT_COMMIT_TAG} ${dockerRepo}:latest"
+        sh "docker push ${dockerRepo}:latest"
+    }
+}

@@ -1,0 +1,32 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Cleanup Deployments') {
+            steps {
+                script {
+                    echo "Bắt đầu dọn dẹp các bản triển khai trong namespace 'yas'..."
+                    
+                    def serviceList = [
+                        "media", "product", "cart", "order", "customer", 
+                        "inventory", "location", "payment", "payment-paypal", 
+                        "promotion", "rating", "search", "tax", "recommendation", 
+                        "webhook", "sampledata", "backoffice-bff", "storefront-bff", 
+                        "backoffice-ui", "storefront-ui", "yas-configuration"
+                    ]
+                    
+                    for (int i = 0; i < serviceList.size(); i++) {
+                        def svc = serviceList[i]
+                        echo "Đang gỡ bỏ service: ${svc}..."
+                        sh "helm uninstall ${svc} --namespace yas || true"
+                    }
+                    
+                    echo "Đang xóa namespace 'yas'..."
+                    sh "kubectl delete namespace yas || true"
+                    
+                    echo "Dọn dẹp hoàn tất!"
+                }
+            }
+        }
+    }
+}

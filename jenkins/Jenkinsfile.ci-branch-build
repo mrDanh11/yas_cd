@@ -37,7 +37,7 @@ pipeline {
                     passwordVariable: 'DOCKERHUB_TOKEN'
                 )]) {
                     sh '''
-                        COMMIT_SHA=$(git rev-parse HEAD)
+                        COMMIT_SHA=$(git rev-parse --short=8 HEAD)
                         BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
 
                         echo "============================================"
