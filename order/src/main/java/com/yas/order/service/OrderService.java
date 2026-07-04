@@ -149,21 +149,22 @@ public class OrderService {
         return orderVm;
     }
 
+    // test Jenkin
     public OrderVm getOrderWithItemsById(long id) {
 
-        Order order = orderRepository.findById(id).orElseThrow(()
-                -> new NotFoundException(Constants.ErrorCode.ORDER_NOT_FOUND, id));
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException(Constants.ErrorCode.ORDER_NOT_FOUND, id));
 
         List<OrderItem> orderItems = orderItemRepository.findAllByOrderId(order.getId());
         return OrderVm.fromModel(order, new HashSet<>(orderItems));
     }
 
     public OrderListVm getAllOrder(Pair<ZonedDateTime, ZonedDateTime> timePair,
-                                   String productName,
-                                   List<OrderStatus> orderStatus,
-                                   Pair<String, String> billingPair,
-                                   String email,
-                                   Pair<Integer, Integer> infoPage) {
+            String productName,
+            List<OrderStatus> orderStatus,
+            Pair<String, String> billingPair,
+            String email,
+            Pair<Integer, Integer> infoPage) {
 
         Sort sort = Sort.by(Sort.Direction.DESC, Constants.Column.CREATE_ON_COLUMN);
         Pageable pageable = PageRequest.of(infoPage.getFirst(), infoPage.getSecond(), sort);
@@ -176,14 +177,13 @@ public class OrderService {
         String billingPhoneNumber = billingPair.getSecond();
 
         Specification<Order> spec = OrderSpecification.findOrderByWithMulCriteria(
-            orderStatus.isEmpty() ? allOrderStatus : orderStatus,
-            billingPhoneNumber,
-            billingCountry,
-            email,
-            productName,
-            createdFrom,
-            createdTo
-        );
+                orderStatus.isEmpty() ? allOrderStatus : orderStatus,
+                billingPhoneNumber,
+                billingCountry,
+                email,
+                productName,
+                createdFrom,
+                createdTo);
 
         Page<Order> orderPage = orderRepository.findAll(spec, pageable);
         if (orderPage.isEmpty()) {
@@ -229,8 +229,8 @@ public class OrderService {
             productIds = productVariations.stream().map(ProductVariationVm::id).toList();
         }
 
-        Specification<Order>
-            spec = OrderSpecification.existsByCreatedByAndInProductIdAndOrderStatusCompleted(userId, productIds);
+        Specification<Order> spec = OrderSpecification.existsByCreatedByAndInProductIdAndOrderStatusCompleted(userId,
+                productIds);
         boolean existedOrder = orderRepository.findOne(spec).isPresent();
 
         return new OrderExistsByProductAndUserGetVm(existedOrder);
@@ -302,20 +302,19 @@ public class OrderService {
         int pageSize = orderRequest.getPageSize();
 
         OrderListVm orderListVm = getAllOrder(
-            Pair.of(createdFrom, createdTo),
-            productName,
-            orderStatus,
-            Pair.of(billingCountry, billingPhoneNumber),
-            email,
-            Pair.of(pageNo, pageSize)
-        );
+                Pair.of(createdFrom, createdTo),
+                productName,
+                orderStatus,
+                Pair.of(billingCountry, billingPhoneNumber),
+                email,
+                Pair.of(pageNo, pageSize));
 
         if (Objects.isNull(orderListVm.orderList())) {
             return CsvExporter.exportToCsv(List.of(), OrderItemCsv.class);
         }
 
         List<BaseCsv> orders = orderListVm.orderList().stream().map(orderMapper::toCsv).collect(
-            Collectors.toUnmodifiableList());
+                Collectors.toUnmodifiableList());
         return CsvExporter.exportToCsv(orders, OrderItemCsv.class);
     }
 }
