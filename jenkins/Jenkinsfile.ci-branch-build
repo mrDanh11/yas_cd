@@ -79,9 +79,7 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        #!/usr/bin/env bash
-
-                        set -euo pipefail
+                        set -eu
 
                         CURRENT_BRANCH="${BRANCH_NAME}"
                         COMMIT_SHA="${COMMIT_SHA}"
@@ -128,7 +126,7 @@ pipeline {
                         echo "============================================"
 
                         # ----------------------------------------------------
-                        # Services deployed by current CD pipeline
+                        # Services currently deployed by CD
                         # ----------------------------------------------------
 
                         BACKEND_SERVICES="
@@ -150,19 +148,7 @@ pipeline {
                         "
 
                         # ----------------------------------------------------
-                        # Optional services
-                        #
-                        # Add these back only when CD also deploys them:
-                        #
-                        # location
-                        # payment
-                        # payment-paypal
-                        # promotion
-                        # rating
-                        # recommendation
-                        # search
-                        # webhook
-                        # sampledata
+                        # Resolve force-build mode
                         # ----------------------------------------------------
 
                         IS_FORCE_BUILD="false"
@@ -173,6 +159,7 @@ pipeline {
 
                         if echo "${COMMIT_MESSAGE}" |
                             grep -Eiq '\\[build[[:space:]]+all\\]'; then
+
                             IS_FORCE_BUILD="true"
                         fi
 
@@ -183,6 +170,10 @@ pipeline {
                             echo "All configured services will be built."
                             echo "============================================"
                         fi
+
+                        # ----------------------------------------------------
+                        # Rebuild every backend when shared code changes
+                        # ----------------------------------------------------
 
                         BUILD_ALL_BACKENDS="false"
 
@@ -202,7 +193,7 @@ pipeline {
                         SKIPPED_SERVICES=""
 
                         # ----------------------------------------------------
-                        # Helper function: verify directory and Dockerfile
+                        # Validate service
                         # ----------------------------------------------------
 
                         validate_service() {
@@ -220,7 +211,7 @@ pipeline {
                         }
 
                         # ----------------------------------------------------
-                        # Helper function: build and push image
+                        # Build and push Docker image
                         # ----------------------------------------------------
 
                         build_and_push_image() {
@@ -344,28 +335,36 @@ pipeline {
                         echo "Branch : ${CURRENT_BRANCH}"
                         echo "Commit : ${COMMIT_SHA}"
 
-                        if [ -z "$(echo "${BUILT_SERVICES}" | xargs)" ]; then
+                        NORMALIZED_BUILT_SERVICES="$(echo "${BUILT_SERVICES}" | xargs)"
+
+                        if [ -z "${NORMALIZED_BUILT_SERVICES}" ]; then
                             echo "Built services: none"
                             echo "No relevant service changes were detected."
                         else
                             echo "Built services:"
+
                             for SERVICE in ${BUILT_SERVICES}; do
                                 echo "  - ${SERVICE}"
+                                echo "    ${DOCKERHUB_USER}/yas-${SERVICE}:${COMMIT_SHA}"
 
                                 if [ "${CURRENT_BRANCH}" = "main" ]; then
-                                    echo "    ${DOCKERHUB_USER}/yas-${SERVICE}:${COMMIT_SHA}"
                                     echo "    ${DOCKERHUB_USER}/yas-${SERVICE}:main"
-                                else
-                                    echo "    ${DOCKERHUB_USER}/yas-${SERVICE}:${COMMIT_SHA}"
                                 fi
                             done
                         fi
 
                         echo ""
                         echo "Skipped services:"
-                        for SERVICE in ${SKIPPED_SERVICES}; do
-                            echo "  - ${SERVICE}"
-                        done
+
+                        NORMALIZED_SKIPPED_SERVICES="$(echo "${SKIPPED_SERVICES}" | xargs)"
+
+                        if [ -z "${NORMALIZED_SKIPPED_SERVICES}" ]; then
+                            echo "  none"
+                        else
+                            for SERVICE in ${SKIPPED_SERVICES}; do
+                                echo "  - ${SERVICE}"
+                            done
+                        fi
 
                         echo "============================================"
                     '''
@@ -399,9 +398,7 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        #!/usr/bin/env bash
-
-                        set -euo pipefail
+                        set -eu
 
                         SERVICES="
                             tax
