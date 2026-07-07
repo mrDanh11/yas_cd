@@ -16,18 +16,11 @@ pipeline {
         string(name: 'cart',           defaultValue: 'main', description: 'Branch for cart service')
         string(name: 'customer',       defaultValue: 'main', description: 'Branch for customer service')
         string(name: 'inventory',      defaultValue: 'main', description: 'Branch for inventory service')
-        string(name: 'location',       defaultValue: 'main', description: 'Branch for location service')
         string(name: 'media',          defaultValue: 'main', description: 'Branch for media service')
         string(name: 'order',          defaultValue: 'main', description: 'Branch for order service')
-        string(name: 'payment',        defaultValue: 'main', description: 'Branch for payment service')
-        string(name: 'payment_paypal', defaultValue: 'main', description: 'Branch for payment-paypal service')
         string(name: 'product',        defaultValue: 'main', description: 'Branch for product service')
-        string(name: 'promotion',      defaultValue: 'main', description: 'Branch for promotion service')
-        string(name: 'rating',         defaultValue: 'main', description: 'Branch for rating service')
-        string(name: 'recommendation', defaultValue: 'main', description: 'Branch for recommendation service')
         string(name: 'search',         defaultValue: 'main', description: 'Branch for search service')
         string(name: 'tax',            defaultValue: 'main', description: 'Branch for tax service')
-        string(name: 'webhook',        defaultValue: 'main', description: 'Branch for webhook service')
         string(name: 'backoffice_bff', defaultValue: 'main', description: 'Branch for backoffice-bff service')
         string(name: 'storefront_bff', defaultValue: 'main', description: 'Branch for storefront-bff service')
     }
@@ -62,18 +55,11 @@ pipeline {
                         [paramName: 'cart',           dirName: 'cart'],
                         [paramName: 'customer',        dirName: 'customer'],
                         [paramName: 'inventory',       dirName: 'inventory'],
-                        [paramName: 'location',        dirName: 'location'],
                         [paramName: 'media',           dirName: 'media'],
                         [paramName: 'order',           dirName: 'order'],
-                        [paramName: 'payment',         dirName: 'payment'],
-                        [paramName: 'payment_paypal',  dirName: 'payment-paypal'],
                         [paramName: 'product',         dirName: 'product'],
-                        [paramName: 'promotion',       dirName: 'promotion'],
-                        [paramName: 'rating',          dirName: 'rating'],
-                        [paramName: 'recommendation',  dirName: 'recommendation'],
                         [paramName: 'search',          dirName: 'search'],
                         [paramName: 'tax',             dirName: 'tax'],
-                        [paramName: 'webhook',         dirName: 'webhook'],
                         [paramName: 'backoffice_bff',  dirName: 'backoffice-bff'],
                         [paramName: 'storefront_bff',  dirName: 'storefront-bff'],
                     ]
@@ -86,7 +72,7 @@ pipeline {
                         def imageTag
 
                         if (branch == 'main') {
-                            imageRepo = "ghcr.io/nashtech-garage/yas-${svc.dirName}"
+                            imageRepo = "${env.DOCKERHUB_USER_USR}/yas-${svc.dirName}"
                             imageTag  = 'latest'
                         } else {
                             def sha = sh(

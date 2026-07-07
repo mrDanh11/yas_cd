@@ -1,0 +1,29 @@
+{{- if .Values.mtls.enabled }}
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls
+  namespace: {{ .Release.Namespace }}
+spec:
+  mtls:
+    mode: {{ .Values.mtls.mode | default "STRICT" }}
+
+---
+{{- if and .Values.mtls.enabled (eq .Values.mtls.mode "STRICT") }}
+# Allow edge services to accept plain text from Traefik ingress controller (outside mesh)
+{{- range $edgeApp := list "storefront-ui" "backoffice-ui" "swagger-ui" "keycloak" }}
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: {{ $edgeApp }}-mtls-permissive
+  namespace: {{ $.Release.Namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ $edgeApp }}
+  mtls:
+    mode: PERMISSIVE
+---
+{{- end }}
+{{- end }}
+{{- end }}

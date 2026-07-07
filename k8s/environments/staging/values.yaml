@@ -1,0 +1,68 @@
+# Values for the staging environment
+global:
+  domain: staging.yas.local
+
+yas-app:
+  global:
+    domain: staging.yas.local
+  cart:
+    backend:
+      image:
+        tag: v1.0.0
+  customer:
+    backend:
+      image:
+        tag: v1.0.0
+  inventory:
+    backend:
+      image:
+        tag: v1.0.0
+  media:
+    backend:
+      image:
+        tag: v1.0.0
+  order:
+    backend:
+      image:
+        tag: v1.0.0
+  product:
+    backend:
+      image:
+        tag: v1.0.0
+  search:
+    backend:
+      image:
+        tag: v1.0.0
+  tax:
+    backend:
+      image:
+        tag: v1.0.0
+  sampledata:
+    backend:
+      image:
+        tag: v1.0.0
+  backoffice-bff:
+    backend:
+      image:
+        tag: v1.0.0
+  storefront-bff:
+    backend:
+      image:
+        tag: v1.0.0
+  storefront-ui:
+    image:
+      tag: v1.0.0
+  backoffice-ui:
+    image:
+      tag: v1.0.0
+  swagger-ui:
+    image:
+      tag: v1.0.0
+
+yas-service-mesh:
+  mtls:
+    enabled: true
+    mode: STRICT
+  authorization:
+    enabled: true
+    defaultDeny: true

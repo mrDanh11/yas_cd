@@ -117,3 +117,7 @@ By contributing, you agree that your contributions will be licensed under MIT Li
         </tr>
     </tbody>
 </table>
+
+## Advanced GitOps & Service Mesh
+For details on the advanced deployment pipeline (ArgoCD) and service mesh security/retry policies (Istio), please check [README-gitops-servicemesh.md](./k8s/README-gitops-servicemesh.md).
+
