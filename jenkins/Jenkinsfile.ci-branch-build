@@ -10,9 +10,9 @@
 // - Main branch also gets tag "main"
 // - FORCE_BUILD_ALL builds every configured service
 //
-// IMPORTANT UI MAPPING:
-// - Docker image yas-storefront-ui is built from ./storefront
-// - Docker image yas-backoffice-ui is built from ./backoffice
+// UI MAPPING:
+// - yas-storefront-ui is built from ./storefront
+// - yas-backoffice-ui is built from ./backoffice
 // ============================================================
 
 pipeline {
@@ -130,7 +130,6 @@ pipeline {
 
                         # ----------------------------------------------------
                         # Backend services
-                        # Image name and source directory are the same
                         # ----------------------------------------------------
 
                         BACKEND_SERVICES="
@@ -141,6 +140,9 @@ pipeline {
                             inventory
                             media
                             order
+                            location
+                            payment
+                            payment-paypal
                             storefront-bff
                             backoffice-bff
                         "
@@ -149,14 +151,7 @@ pipeline {
                         # UI mapping
                         #
                         # Format:
-                        # docker-image-service-name:source-directory
-                        #
-                        # yas-storefront-ui <- ./storefront
-                        # yas-backoffice-ui <- ./backoffice
-                        #
-                        # swagger-ui is not included because the repository
-                        # currently has no root source directory/Dockerfile
-                        # for swagger-ui.
+                        # image-service-name:source-directory
                         # ----------------------------------------------------
 
                         UI_SERVICES="
@@ -189,7 +184,7 @@ pipeline {
                         fi
 
                         # ----------------------------------------------------
-                        # Build every backend when shared backend files change
+                        # Shared backend changes
                         # ----------------------------------------------------
 
                         BUILD_ALL_BACKENDS="false"
@@ -210,19 +205,21 @@ pipeline {
                         SKIPPED_SERVICES=""
 
                         # ----------------------------------------------------
-                        # Validate build context
+                        # Validate Docker build context
                         # ----------------------------------------------------
 
                         validate_build_context() {
                             BUILD_CONTEXT="$1"
 
                             if [ ! -d "${BUILD_CONTEXT}" ]; then
-                                echo "ERROR: Build context does not exist: ${BUILD_CONTEXT}"
+                                echo "ERROR: Build context does not exist:"
+                                echo "${BUILD_CONTEXT}"
                                 exit 1
                             fi
 
                             if [ ! -f "${BUILD_CONTEXT}/Dockerfile" ]; then
-                                echo "ERROR: Dockerfile does not exist: ${BUILD_CONTEXT}/Dockerfile"
+                                echo "ERROR: Dockerfile does not exist:"
+                                echo "${BUILD_CONTEXT}/Dockerfile"
                                 exit 1
                             fi
                         }
@@ -230,8 +227,8 @@ pipeline {
                         # ----------------------------------------------------
                         # Build and push Docker image
                         #
-                        # Argument 1: image service name
-                        # Argument 2: Docker build context
+                        # $1: service/image suffix
+                        # $2: build context
                         # ----------------------------------------------------
 
                         build_and_push_image() {
@@ -290,12 +287,26 @@ pipeline {
 
                             if [ "${IS_FORCE_BUILD}" = "true" ]; then
                                 SHOULD_BUILD="true"
+
                             elif [ "${BUILD_ALL_BACKENDS}" = "true" ]; then
                                 SHOULD_BUILD="true"
+
                             elif echo "${CHANGED_FILES}" |
                                 grep -q "^${SERVICE}/"; then
 
                                 SHOULD_BUILD="true"
+                            fi
+
+                            # payment có thể phụ thuộc logic/module payment-paypal.
+                            # Khi payment-paypal đổi, build lại payment.
+                            if [ "${SERVICE}" = "payment" ] &&
+                               echo "${CHANGED_FILES}" |
+                               grep -q "^payment-paypal/"; then
+
+                                SHOULD_BUILD="true"
+
+                                echo "payment-paypal changed."
+                                echo "payment will also be rebuilt."
                             fi
 
                             if [ "${SHOULD_BUILD}" = "true" ]; then
@@ -306,7 +317,14 @@ pipeline {
                                 echo "============================================"
 
                                 if [ ! -d "${SERVICE}" ]; then
-                                    echo "ERROR: Maven module directory does not exist: ${SERVICE}"
+                                    echo "ERROR: Maven module directory does not exist:"
+                                    echo "${SERVICE}"
+                                    exit 1
+                                fi
+
+                                if [ ! -f "${SERVICE}/pom.xml" ]; then
+                                    echo "ERROR: Maven pom.xml does not exist:"
+                                    echo "${SERVICE}/pom.xml"
                                     exit 1
                                 fi
 
@@ -321,6 +339,7 @@ pipeline {
                                     "${SERVICE}"
                             else
                                 echo "Skipping backend ${SERVICE}: no relevant changes"
+
                                 SKIPPED_SERVICES="${SKIPPED_SERVICES} ${SERVICE}"
                             fi
                         done
@@ -336,6 +355,7 @@ pipeline {
 
                             if [ "${IS_FORCE_BUILD}" = "true" ]; then
                                 SHOULD_BUILD="true"
+
                             elif echo "${CHANGED_FILES}" |
                                 grep -q "^${BUILD_CONTEXT}/"; then
 
@@ -348,6 +368,7 @@ pipeline {
                                     "${BUILD_CONTEXT}"
                             else
                                 echo "Skipping UI ${SERVICE}: no relevant changes"
+
                                 SKIPPED_SERVICES="${SKIPPED_SERVICES} ${SERVICE}"
                             fi
                         done
@@ -363,7 +384,9 @@ pipeline {
                         echo "Branch : ${CURRENT_BRANCH}"
                         echo "Commit : ${COMMIT_SHA}"
 
-                        NORMALIZED_BUILT_SERVICES="$(echo "${BUILT_SERVICES}" | xargs)"
+                        NORMALIZED_BUILT_SERVICES="$(
+                            echo "${BUILT_SERVICES}" | xargs
+                        )"
 
                         if [ -z "${NORMALIZED_BUILT_SERVICES}" ]; then
                             echo "Built services: none"
@@ -384,7 +407,9 @@ pipeline {
                         echo ""
                         echo "Skipped services:"
 
-                        NORMALIZED_SKIPPED_SERVICES="$(echo "${SKIPPED_SERVICES}" | xargs)"
+                        NORMALIZED_SKIPPED_SERVICES="$(
+                            echo "${SKIPPED_SERVICES}" | xargs
+                        )"
 
                         if [ -z "${NORMALIZED_SKIPPED_SERVICES}" ]; then
                             echo "  none"
@@ -436,6 +461,9 @@ pipeline {
                             inventory
                             media
                             order
+                            location
+                            payment
+                            payment-paypal
                             storefront-bff
                             backoffice-bff
                             storefront-ui
@@ -462,7 +490,8 @@ pipeline {
                             if ! docker manifest inspect \
                                 "${IMAGE}" >/dev/null 2>&1; then
 
-                                echo "ERROR: Image not found: ${IMAGE}"
+                                echo "ERROR: Image not found:"
+                                echo "${IMAGE}"
                                 exit 1
                             fi
 
@@ -487,7 +516,7 @@ pipeline {
 
         failure {
             echo 'CI build failed.'
-            echo 'Kiểm tra Maven package, Docker build, Dockerfile và Docker push logs.'
+            echo 'Kiểm tra Maven package, Dockerfile, Docker build và Docker push logs.'
         }
 
         always {
