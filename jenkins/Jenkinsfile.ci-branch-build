@@ -1,26 +1,32 @@
 // ============================================================
-// JOB: ci-branch-build (Multibranch Pipeline)
+// JOB: ci-branch-build
+// TYPE: Multibranch Pipeline
 //
 // PURPOSE:
-// - Detect changed services on the current branch
-// - Build Docker images
-// - Push images to Docker Hub
-// - Image tag = short commit SHA (8 characters)
-// - On main branch, also push tag "latest"
-//
-// REQUIRED JENKINS CREDENTIAL:
-// - ID: dockerhub-credentials
-// - Type: Username with password
-// - Username: Docker Hub username
-// - Password: Docker Hub access token
-//
-// REQUIRED TOOLS:
-// - Maven tool named "Maven"
-// - Docker available to Jenkins user
+// - Detect services changed in the current commit
+// - Build affected Maven modules
+// - Build and push Docker images
+// - Image tag for every branch = short commit SHA (8 characters)
+// - Main branch also pushes tag "main"
+// - Supports FORCE_BUILD_ALL parameter
+// - Supports "[build all]" in the latest commit message
 // ============================================================
 
 pipeline {
     agent any
+
+    parameters {
+        booleanParam(
+            name: 'FORCE_BUILD_ALL',
+            defaultValue: false,
+            description: 'Build và push toàn bộ backend, BFF và UI'
+        )
+    }
+
+    environment {
+        ENV_FORCE_BUILD_ALL = "${params.FORCE_BUILD_ALL}"
+        MAVEN_LOCAL_REPO = "${WORKSPACE}/.m2/repository"
+    }
 
     tools {
         maven 'Maven'
@@ -30,10 +36,40 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+
+                sh '''
+                    set -eu
+
+                    echo "============================================"
+                    echo "Repository checked out successfully"
+                    echo "Branch: ${BRANCH_NAME}"
+                    echo "Commit: $(git rev-parse HEAD)"
+                    echo "============================================"
+                '''
             }
         }
 
-        stage('Detect Changes & Build Images') {
+        stage('Prepare build information') {
+            steps {
+                script {
+                    env.COMMIT_SHA = sh(
+                        script: 'git rev-parse --short=8 HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    env.COMMIT_MESSAGE = sh(
+                        script: 'git log -1 --pretty=%B',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Branch: ${env.BRANCH_NAME}"
+                    echo "Commit SHA: ${env.COMMIT_SHA}"
+                    echo "Commit message: ${env.COMMIT_MESSAGE}"
+                }
+            }
+        }
+
+        stage('Detect Changes and Build Images') {
             steps {
                 withCredentials([
                     usernamePassword(
@@ -43,58 +79,68 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        set -eu
+                        #!/usr/bin/env bash
 
-                        COMMIT_SHA=$(git rev-parse --short=8 HEAD)
+                        set -euo pipefail
 
-                        # BRANCH_NAME là biến có sẵn của Jenkins Multibranch.
                         CURRENT_BRANCH="${BRANCH_NAME}"
+                        COMMIT_SHA="${COMMIT_SHA}"
+                        COMMIT_MESSAGE="${COMMIT_MESSAGE:-}"
+                        FORCE_BUILD_ALL="${ENV_FORCE_BUILD_ALL:-false}"
 
                         echo "============================================"
-                        echo "  Branch : ${CURRENT_BRANCH}"
-                        echo "  Commit : ${COMMIT_SHA}"
-                        echo "  Docker : ${DOCKERHUB_USER}"
+                        echo "CI BUILD INFORMATION"
+                        echo "============================================"
+                        echo "Branch       : ${CURRENT_BRANCH}"
+                        echo "Commit       : ${COMMIT_SHA}"
+                        echo "Docker user  : ${DOCKERHUB_USER}"
+                        echo "Force build  : ${FORCE_BUILD_ALL}"
                         echo "============================================"
 
                         echo "${DOCKERHUB_TOKEN}" |
                             docker login \
-                                -u "${DOCKERHUB_USER}" \
+                                --username "${DOCKERHUB_USER}" \
                                 --password-stdin
 
-                        # Luôn logout kể cả khi build thất bại.
                         trap 'docker logout >/dev/null 2>&1 || true' EXIT
 
-                        # Lấy danh sách file thay đổi của commit hiện tại.
+                        # ----------------------------------------------------
+                        # Detect changed files
+                        # ----------------------------------------------------
+
                         if git rev-parse HEAD~1 >/dev/null 2>&1; then
-                            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+                            CHANGED_FILES="$(git diff --name-only HEAD~1 HEAD)"
                         else
-                            CHANGED_FILES=$(git show --name-only --format="" HEAD)
+                            CHANGED_FILES="$(git show --name-only --format="" HEAD)"
                         fi
 
                         echo ""
-                        echo "Changed files:"
-                        echo "${CHANGED_FILES}"
-                        echo ""
+                        echo "============================================"
+                        echo "CHANGED FILES"
+                        echo "============================================"
+
+                        if [ -n "${CHANGED_FILES}" ]; then
+                            echo "${CHANGED_FILES}"
+                        else
+                            echo "No changed files detected."
+                        fi
+
+                        echo "============================================"
+
+                        # ----------------------------------------------------
+                        # Services deployed by current CD pipeline
+                        # ----------------------------------------------------
 
                         BACKEND_SERVICES="
+                            tax
                             cart
                             customer
+                            product
                             inventory
-                            location
                             media
                             order
-                            payment
-                            payment-paypal
-                            product
-                            promotion
-                            rating
-                            recommendation
-                            search
-                            tax
-                            webhook
-                            backoffice-bff
                             storefront-bff
-                            sampledata
+                            backoffice-bff
                         "
 
                         UI_SERVICES="
@@ -103,137 +149,304 @@ pipeline {
                             swagger-ui
                         "
 
-                        BUILT_SERVICES=""
+                        # ----------------------------------------------------
+                        # Optional services
+                        #
+                        # Add these back only when CD also deploys them:
+                        #
+                        # location
+                        # payment
+                        # payment-paypal
+                        # promotion
+                        # rating
+                        # recommendation
+                        # search
+                        # webhook
+                        # sampledata
+                        # ----------------------------------------------------
 
-                        # Nếu parent pom hoặc common-library thay đổi,
-                        # toàn bộ backend có thể bị ảnh hưởng.
-                        BUILD_ALL_BACKENDS=false
+                        IS_FORCE_BUILD="false"
+
+                        if [ "${FORCE_BUILD_ALL}" = "true" ]; then
+                            IS_FORCE_BUILD="true"
+                        fi
+
+                        if echo "${COMMIT_MESSAGE}" |
+                            grep -Eiq '\\[build[[:space:]]+all\\]'; then
+                            IS_FORCE_BUILD="true"
+                        fi
+
+                        if [ "${IS_FORCE_BUILD}" = "true" ]; then
+                            echo ""
+                            echo "============================================"
+                            echo "FORCE BUILD ALL ENABLED"
+                            echo "All configured services will be built."
+                            echo "============================================"
+                        fi
+
+                        BUILD_ALL_BACKENDS="false"
 
                         if echo "${CHANGED_FILES}" |
                             grep -Eq '^(pom\\.xml|common-library/)'; then
-                            BUILD_ALL_BACKENDS=true
-                            echo "Shared backend files changed."
+
+                            BUILD_ALL_BACKENDS="true"
+
+                            echo ""
+                            echo "============================================"
+                            echo "SHARED BACKEND FILE CHANGED"
                             echo "All backend services will be rebuilt."
+                            echo "============================================"
                         fi
 
-                        # ====================================================
-                        # BUILD BACKEND SERVICES
-                        # ====================================================
-                        for SERVICE in ${BACKEND_SERVICES}; do
-                            SHOULD_BUILD=false
+                        BUILT_SERVICES=""
+                        SKIPPED_SERVICES=""
 
-                            if [ "${BUILD_ALL_BACKENDS}" = "true" ]; then
-                                SHOULD_BUILD=true
-                            elif echo "${CHANGED_FILES}" |
-                                grep -q "^${SERVICE}/"; then
-                                SHOULD_BUILD=true
+                        # ----------------------------------------------------
+                        # Helper function: verify directory and Dockerfile
+                        # ----------------------------------------------------
+
+                        validate_service() {
+                            SERVICE="$1"
+
+                            if [ ! -d "${SERVICE}" ]; then
+                                echo "ERROR: Service directory does not exist: ${SERVICE}"
+                                exit 1
                             fi
 
-                            # payment phụ thuộc payment-paypal.
-                            # Nếu payment-paypal thay đổi thì build lại payment.
-                            if [ "${SERVICE}" = "payment" ] &&
-                                echo "${CHANGED_FILES}" |
-                                grep -q "^payment-paypal/"; then
-                                SHOULD_BUILD=true
+                            if [ ! -f "${SERVICE}/Dockerfile" ]; then
+                                echo "ERROR: Dockerfile does not exist: ${SERVICE}/Dockerfile"
+                                exit 1
+                            fi
+                        }
+
+                        # ----------------------------------------------------
+                        # Helper function: build and push image
+                        # ----------------------------------------------------
+
+                        build_and_push_image() {
+                            SERVICE="$1"
+                            IMAGE="${DOCKERHUB_USER}/yas-${SERVICE}"
+
+                            validate_service "${SERVICE}"
+
+                            echo ""
+                            echo "============================================"
+                            echo "BUILDING DOCKER IMAGE"
+                            echo "Service : ${SERVICE}"
+                            echo "Image   : ${IMAGE}:${COMMIT_SHA}"
+                            echo "============================================"
+
+                            docker build \
+                                --pull \
+                                --tag "${IMAGE}:${COMMIT_SHA}" \
+                                "./${SERVICE}"
+
+                            docker push "${IMAGE}:${COMMIT_SHA}"
+
+                            echo "Pushed: ${IMAGE}:${COMMIT_SHA}"
+
+                            if [ "${CURRENT_BRANCH}" = "main" ]; then
+                                docker tag \
+                                    "${IMAGE}:${COMMIT_SHA}" \
+                                    "${IMAGE}:main"
+
+                                docker push "${IMAGE}:main"
+
+                                echo "Pushed: ${IMAGE}:main"
+                            fi
+
+                            BUILT_SERVICES="${BUILT_SERVICES} ${SERVICE}"
+
+                            docker image rm \
+                                "${IMAGE}:${COMMIT_SHA}" \
+                                >/dev/null 2>&1 || true
+
+                            if [ "${CURRENT_BRANCH}" = "main" ]; then
+                                docker image rm \
+                                    "${IMAGE}:main" \
+                                    >/dev/null 2>&1 || true
+                            fi
+                        }
+
+                        # ----------------------------------------------------
+                        # Build backend services
+                        # ----------------------------------------------------
+
+                        for SERVICE in ${BACKEND_SERVICES}; do
+                            SHOULD_BUILD="false"
+
+                            if [ "${IS_FORCE_BUILD}" = "true" ]; then
+                                SHOULD_BUILD="true"
+                            elif [ "${BUILD_ALL_BACKENDS}" = "true" ]; then
+                                SHOULD_BUILD="true"
+                            elif echo "${CHANGED_FILES}" |
+                                grep -q "^${SERVICE}/"; then
+
+                                SHOULD_BUILD="true"
                             fi
 
                             if [ "${SHOULD_BUILD}" = "true" ]; then
                                 echo ""
-                                echo "========================================="
-                                echo "  Building backend: ${SERVICE}"
-                                echo "========================================="
+                                echo "============================================"
+                                echo "BUILDING MAVEN MODULE"
+                                echo "Service: ${SERVICE}"
+                                echo "============================================"
+
+                                if [ ! -d "${SERVICE}" ]; then
+                                    echo "ERROR: Maven module directory does not exist: ${SERVICE}"
+                                    exit 1
+                                fi
 
                                 mvn clean package \
                                     -pl "${SERVICE}" \
                                     -am \
                                     -DskipTests \
-                                    -q \
-                                    -Dmaven.repo.local="${WORKSPACE}/.m2/repository"
+                                    -Dmaven.repo.local="${MAVEN_LOCAL_REPO}"
 
-                                IMAGE="${DOCKERHUB_USER}/yas-${SERVICE}"
-
-                                docker build \
-                                    -t "${IMAGE}:${COMMIT_SHA}" \
-                                    "./${SERVICE}"
-
-                                docker push "${IMAGE}:${COMMIT_SHA}"
-
-                                echo "Pushed: ${IMAGE}:${COMMIT_SHA}"
-
-                                if [ "${CURRENT_BRANCH}" = "main" ]; then
-                                    docker tag \
-                                        "${IMAGE}:${COMMIT_SHA}" \
-                                        "${IMAGE}:latest"
-
-                                    docker push "${IMAGE}:latest"
-
-                                    echo "Pushed: ${IMAGE}:latest"
-                                fi
-
-                                BUILT_SERVICES="${BUILT_SERVICES} ${SERVICE}"
-
-                                docker rmi "${IMAGE}:${COMMIT_SHA}" || true
-
-                                if [ "${CURRENT_BRANCH}" = "main" ]; then
-                                    docker rmi "${IMAGE}:latest" || true
-                                fi
+                                build_and_push_image "${SERVICE}"
+                            else
+                                echo "Skipping backend ${SERVICE}: no relevant changes"
+                                SKIPPED_SERVICES="${SKIPPED_SERVICES} ${SERVICE}"
                             fi
                         done
 
-                        # ====================================================
-                        # BUILD UI SERVICES
-                        # ====================================================
+                        # ----------------------------------------------------
+                        # Build UI services
+                        # ----------------------------------------------------
+
                         for SERVICE in ${UI_SERVICES}; do
-                            if echo "${CHANGED_FILES}" |
+                            SHOULD_BUILD="false"
+
+                            if [ "${IS_FORCE_BUILD}" = "true" ]; then
+                                SHOULD_BUILD="true"
+                            elif echo "${CHANGED_FILES}" |
                                 grep -q "^${SERVICE}/"; then
 
-                                echo ""
-                                echo "========================================="
-                                echo "  Building UI: ${SERVICE}"
-                                echo "========================================="
+                                SHOULD_BUILD="true"
+                            fi
 
-                                IMAGE="${DOCKERHUB_USER}/yas-${SERVICE}"
-
-                                # Dockerfile của UI tự cài dependency và build Next.js.
-                                docker build \
-                                    -t "${IMAGE}:${COMMIT_SHA}" \
-                                    "./${SERVICE}"
-
-                                docker push "${IMAGE}:${COMMIT_SHA}"
-
-                                echo "Pushed: ${IMAGE}:${COMMIT_SHA}"
-
-                                if [ "${CURRENT_BRANCH}" = "main" ]; then
-                                    docker tag \
-                                        "${IMAGE}:${COMMIT_SHA}" \
-                                        "${IMAGE}:latest"
-
-                                    docker push "${IMAGE}:latest"
-
-                                    echo "Pushed: ${IMAGE}:latest"
-                                fi
-
-                                BUILT_SERVICES="${BUILT_SERVICES} ${SERVICE}"
-
-                                docker rmi "${IMAGE}:${COMMIT_SHA}" || true
-
-                                if [ "${CURRENT_BRANCH}" = "main" ]; then
-                                    docker rmi "${IMAGE}:latest" || true
-                                fi
+                            if [ "${SHOULD_BUILD}" = "true" ]; then
+                                build_and_push_image "${SERVICE}"
+                            else
+                                echo "Skipping UI ${SERVICE}: no relevant changes"
+                                SKIPPED_SERVICES="${SKIPPED_SERVICES} ${SERVICE}"
                             fi
                         done
+
+                        # ----------------------------------------------------
+                        # Build summary
+                        # ----------------------------------------------------
 
                         echo ""
                         echo "============================================"
+                        echo "CI BUILD SUMMARY"
+                        echo "============================================"
+                        echo "Branch : ${CURRENT_BRANCH}"
+                        echo "Commit : ${COMMIT_SHA}"
 
-                        if [ -z "${BUILT_SERVICES}" ]; then
-                            echo "No service directories were modified."
-                            echo "No Docker images were built."
+                        if [ -z "$(echo "${BUILT_SERVICES}" | xargs)" ]; then
+                            echo "Built services: none"
+                            echo "No relevant service changes were detected."
                         else
-                            echo "Successfully built and pushed:"
-                            echo "${BUILT_SERVICES}"
+                            echo "Built services:"
+                            for SERVICE in ${BUILT_SERVICES}; do
+                                echo "  - ${SERVICE}"
+
+                                if [ "${CURRENT_BRANCH}" = "main" ]; then
+                                    echo "    ${DOCKERHUB_USER}/yas-${SERVICE}:${COMMIT_SHA}"
+                                    echo "    ${DOCKERHUB_USER}/yas-${SERVICE}:main"
+                                else
+                                    echo "    ${DOCKERHUB_USER}/yas-${SERVICE}:${COMMIT_SHA}"
+                                fi
+                            done
                         fi
 
+                        echo ""
+                        echo "Skipped services:"
+                        for SERVICE in ${SKIPPED_SERVICES}; do
+                            echo "  - ${SERVICE}"
+                        done
+
+                        echo "============================================"
+                    '''
+                }
+            }
+        }
+
+        stage('Verify Main Images') {
+            when {
+                allOf {
+                    branch 'main'
+
+                    expression {
+                        return params.FORCE_BUILD_ALL ||
+                            (
+                                env.COMMIT_MESSAGE != null &&
+                                env.COMMIT_MESSAGE
+                                    .toLowerCase()
+                                    .contains('[build all]')
+                            )
+                    }
+                }
+            }
+
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKERHUB_USER',
+                        passwordVariable: 'DOCKERHUB_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        #!/usr/bin/env bash
+
+                        set -euo pipefail
+
+                        SERVICES="
+                            tax
+                            cart
+                            customer
+                            product
+                            inventory
+                            media
+                            order
+                            storefront-bff
+                            backoffice-bff
+                            storefront-ui
+                            backoffice-ui
+                            swagger-ui
+                        "
+
+                        echo "${DOCKERHUB_TOKEN}" |
+                            docker login \
+                                --username "${DOCKERHUB_USER}" \
+                                --password-stdin
+
+                        trap 'docker logout >/dev/null 2>&1 || true' EXIT
+
+                        echo ""
+                        echo "============================================"
+                        echo "VERIFYING MAIN IMAGES"
+                        echo "============================================"
+
+                        for SERVICE in ${SERVICES}; do
+                            IMAGE="${DOCKERHUB_USER}/yas-${SERVICE}:main"
+
+                            echo "Checking ${IMAGE}"
+
+                            if ! docker manifest inspect \
+                                "${IMAGE}" >/dev/null 2>&1; then
+
+                                echo "ERROR: Image not found: ${IMAGE}"
+                                exit 1
+                            fi
+
+                            echo "Found: ${IMAGE}"
+                        done
+
+                        echo "============================================"
+                        echo "All main images are available."
                         echo "============================================"
                     '''
                 }
@@ -245,16 +458,18 @@ pipeline {
         success {
             echo 'CI build completed successfully.'
             echo "Branch: ${env.BRANCH_NAME}"
-            echo "Commit: ${env.GIT_COMMIT}"
+            echo "Commit SHA: ${env.COMMIT_SHA}"
         }
 
         failure {
             echo 'CI build failed.'
-            echo 'Check Maven, Docker build, and Docker push logs above.'
+            echo 'Kiểm tra Maven package, Docker build, Docker login và Docker push logs.'
         }
 
         always {
-            sh 'docker logout >/dev/null 2>&1 || true'
+            sh '''
+                docker logout >/dev/null 2>&1 || true
+            '''
         }
     }
 }
