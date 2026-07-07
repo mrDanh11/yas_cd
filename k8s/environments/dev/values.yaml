@@ -1,0 +1,68 @@
+# Values for the development environment
+global:
+  domain: dev.yas.local
+
+yas-app:
+  global:
+    domain: dev.yas.local
+  cart:
+    backend:
+      image:
+        tag: main
+  customer:
+    backend:
+      image:
+        tag: main
+  inventory:
+    backend:
+      image:
+        tag: main
+  media:
+    backend:
+      image:
+        tag: main
+  order:
+    backend:
+      image:
+        tag: main
+  product:
+    backend:
+      image:
+        tag: main
+  search:
+    backend:
+      image:
+        tag: main
+  tax:
+    backend:
+      image:
+        tag: main
+  sampledata:
+    backend:
+      image:
+        tag: main
+  backoffice-bff:
+    backend:
+      image:
+        tag: main
+  storefront-bff:
+    backend:
+      image:
+        tag: main
+  storefront-ui:
+    image:
+      tag: main
+  backoffice-ui:
+    image:
+      tag: main
+  swagger-ui:
+    image:
+      tag: main
+
+yas-service-mesh:
+  mtls:
+    enabled: true
+    mode: STRICT
+  authorization:
+    enabled: true
+    defaultDeny: true

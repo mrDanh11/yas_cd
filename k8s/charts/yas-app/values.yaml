@@ -1,0 +1,97 @@
+# Default values for yas-app (umbrella chart)
+# These values will override the subcharts' defaults
+
+global:
+  domain: dev.yas.local
+
+cart:
+  backend:
+    image:
+      repository: mrdanh11/yas-cart
+      tag: main
+    fullnameOverride: cart-service
+
+customer:
+  backend:
+    image:
+      repository: mrdanh11/yas-customer
+      tag: main
+    fullnameOverride: customer-service
+
+inventory:
+  backend:
+    image:
+      repository: mrdanh11/yas-inventory
+      tag: main
+    fullnameOverride: inventory-service
+
+media:
+  backend:
+    image:
+      repository: mrdanh11/yas-media
+      tag: main
+    fullnameOverride: media-service
+
+order:
+  backend:
+    image:
+      repository: mrdanh11/yas-order
+      tag: main
+    fullnameOverride: order-service
+
+product:
+  backend:
+    image:
+      repository: mrdanh11/yas-product
+      tag: main
+    fullnameOverride: product-service
+
+search:
+  backend:
+    image:
+      repository: mrdanh11/yas-search
+      tag: main
+    fullnameOverride: search-service
+
+tax:
+  backend:
+    image:
+      repository: mrdanh11/yas-tax
+      tag: main
+    fullnameOverride: tax-service
+
+sampledata:
+  backend:
+    image:
+      repository: mrdanh11/yas-sampledata
+      tag: main
+    fullnameOverride: sampledata-service
+
+backoffice-bff:
+  backend:
+    image:
+      repository: mrdanh11/yas-backoffice-bff
+      tag: main
+    fullnameOverride: backoffice-bff-service
+
+storefront-bff:
+  backend:
+    image:
+      repository: mrdanh11/yas-storefront-bff
+      tag: main
+    fullnameOverride: storefront-bff-service
+
+storefront-ui:
+  image:
+    repository: mrdanh11/yas-storefront-ui
+    tag: main
+
+backoffice-ui:
+  image:
+    repository: mrdanh11/yas-backoffice-ui
+    tag: main
+
+swagger-ui:
+  image:
+    repository: mrdanh11/yas-swagger-ui
+    tag: main

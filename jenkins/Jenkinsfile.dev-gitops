@@ -1,0 +1,140 @@
+// ============================================================
+// JOB: dev-gitops
+// PURPOSE: Automated CI/CD for the dev environment.
+//          Triggered on changes to 'main' branch.
+// ============================================================
+
+pipeline {
+    agent any
+
+    tools {
+        maven 'Maven'
+    }
+
+    environment {
+        DOCKERHUB_CREDENTIALS_ID = 'dockerhub-credentials'
+        GITOPS_REPO_CREDENTIALS_ID = 'github-gitops-credentials'
+        GITHUB_REPO_URL = 'git@github.com:mrDanh11/yas_cd.git'
+        K8S_ENV_PATH = 'k8s/environments/dev/values.yaml'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Detect, Build & Push Images') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: "${env.DOCKERHUB_CREDENTIALS_ID}",
+                        usernameVariable: 'DOCKERHUB_USER',
+                        passwordVariable: 'DOCKERHUB_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set -eu
+
+                        COMMIT_SHA=$(git rev-parse --short=8 HEAD)
+                        echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USER}" --password-stdin
+                        trap 'docker logout >/dev/null 2>&1 || true' EXIT
+
+                        # Get list of changed files
+                        if git rev-parse HEAD~1 >/dev/null 2>&1; then
+                            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+                        else
+                            CHANGED_FILES=$(git show --name-only --format="" HEAD)
+                        fi
+
+                        echo "Changed files:"
+                        echo "${CHANGED_FILES}"
+
+                        BACKEND_SERVICES="cart customer inventory media order product search tax backoffice-bff storefront-bff sampledata"
+                        UI_SERVICES="storefront-ui backoffice-ui swagger-ui"
+                        BUILT_SERVICES=""
+
+                        # Rebuild all backends if common changes occur
+                        BUILD_ALL_BACKENDS=false
+                        if echo "${CHANGED_FILES}" | grep -Eq '^(pom\\.xml|common-library/)'; then
+                            BUILD_ALL_BACKENDS=true
+                            echo "Shared files changed. All backends will be built."
+                        fi
+
+                        # --- Process Backend Services ---
+                        for SERVICE in ${BACKEND_SERVICES}; do
+                            SHOULD_BUILD=false
+                            if [ "${BUILD_ALL_BACKENDS}" = "true" ]; then
+                                SHOULD_BUILD=true
+                            elif echo "${CHANGED_FILES}" | grep -q "^${SERVICE}/"; then
+                                SHOULD_BUILD=true
+                            fi
+
+                            if [ "${SHOULD_BUILD}" = "true" ]; then
+                                echo ">>> Building backend: ${SERVICE}..."
+                                mvn clean package -pl "${SERVICE}" -am -DskipTests -q -Dmaven.repo.local="${WORKSPACE}/.m2/repository"
+
+                                IMAGE="${DOCKERHUB_USER}/yas-${SERVICE}"
+                                docker build -t "${IMAGE}:${COMMIT_SHA}" "./${SERVICE}"
+                                docker push "${IMAGE}:${COMMIT_SHA}"
+                                docker rmi "${IMAGE}:${COMMIT_SHA}" || true
+
+                                # Update tag in values.yaml
+                                yq -i ".yas-app.\"${SERVICE}\".backend.image.tag = \"${COMMIT_SHA}\"" "${K8S_ENV_PATH}"
+                                BUILT_SERVICES="${BUILT_SERVICES} ${SERVICE}"
+                            fi
+                        done
+
+                        # --- Process UI Services ---
+                        for SERVICE in ${UI_SERVICES}; do
+                            if echo "${CHANGED_FILES}" | grep -q "^${SERVICE}/"; then
+                                echo ">>> Building UI: ${SERVICE}..."
+                                IMAGE="${DOCKERHUB_USER}/yas-${SERVICE}"
+                                docker build -t "${IMAGE}:${COMMIT_SHA}" "./${SERVICE}"
+                                docker push "${IMAGE}:${COMMIT_SHA}"
+                                docker rmi "${IMAGE}:${COMMIT_SHA}" || true
+
+                                # Update tag in values.yaml
+                                yq -i ".yas-app.\"${SERVICE}\".image.tag = \"${COMMIT_SHA}\"" "${K8S_ENV_PATH}"
+                                BUILT_SERVICES="${BUILT_SERVICES} ${SERVICE}"
+                            fi
+                        done
+
+                        # Export built services list for subsequent stage
+                        echo "${BUILT_SERVICES}" > .built_services
+                    '''
+                }
+            }
+        }
+
+        stage('Commit & Push GitOps Changes') {
+            steps {
+                script {
+                    def builtServices = readFile('.built_services').trim()
+                    if (builtServices) {
+                        echo "Commiting updated values for: ${builtServices}"
+                        sshagent([env.GITOPS_REPO_CREDENTIALS_ID]) {
+                            sh '''
+                                git config user.name "Jenkins CI/CD"
+                                git config user.email "jenkins@yas.local"
+                                git add k8s/environments/dev/values.yaml
+                                git commit -m "chore: dev auto-deploy services [skip ci]"
+                                git push origin HEAD:feat/advanced-gitops-servicemesh
+                            '''
+                        }
+                    } else {
+                        echo "No application changes detected. GitOps update skipped."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'rm -f .built_services || true'
+            sh 'docker logout >/dev/null 2>&1 || true'
+        }
+    }
+}

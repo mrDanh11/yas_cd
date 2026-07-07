@@ -1,0 +1,53 @@
+apiVersion: v2
+name: yas-app
+description: Umbrella Helm chart for all YAS microservices and UI components (Optimized to 14 essential services)
+type: application
+version: 0.1.0
+appVersion: "latest"
+
+dependencies:
+  - name: yas-configuration
+    version: 0.1.0
+    repository: "file://../yas-configuration"
+  - name: cart
+    version: 0.1.0
+    repository: "file://../cart"
+  - name: customer
+    version: 0.1.0
+    repository: "file://../customer"
+  - name: inventory
+    version: 0.1.0
+    repository: "file://../inventory"
+  - name: media
+    version: 0.1.0
+    repository: "file://../media"
+  - name: order
+    version: 0.1.0
+    repository: "file://../order"
+  - name: product
+    version: 0.1.0
+    repository: "file://../product"
+  - name: search
+    version: 0.1.0
+    repository: "file://../search"
+  - name: tax
+    version: 0.1.0
+    repository: "file://../tax"
+  - name: sampledata
+    version: 0.1.0
+    repository: "file://../sampledata"
+  - name: backoffice-bff
+    version: 0.1.0
+    repository: "file://../backoffice-bff"
+  - name: storefront-bff
+    version: 0.1.0
+    repository: "file://../storefront-bff"
+  - name: storefront-ui
+    version: 0.1.0
+    repository: "file://../storefront-ui"
+  - name: backoffice-ui
+    version: 0.1.0
+    repository: "file://../backoffice-ui"
+  - name: swagger-ui
+    version: 0.1.0
+    repository: "file://../swagger-ui"

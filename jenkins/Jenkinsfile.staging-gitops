@@ -1,0 +1,149 @@
+// ============================================================
+// JOB: staging-gitops
+// PURPOSE: Automated CI/CD for the staging environment.
+//          Triggered when a release tag (v*) is pushed.
+// ============================================================
+
+pipeline {
+    agent any
+
+    tools {
+        maven 'Maven'
+    }
+
+    environment {
+        DOCKERHUB_CREDENTIALS_ID = 'dockerhub-credentials'
+        GITOPS_REPO_CREDENTIALS_ID = 'github-gitops-credentials'
+        GITHUB_REPO_URL = 'git@github.com:mrDanh11/yas_cd.git'
+        K8S_ENV_PATH = 'k8s/environments/staging/values.yaml'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build & Push Release Images') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: "${env.DOCKERHUB_CREDENTIALS_ID}",
+                        usernameVariable: 'DOCKERHUB_USER',
+                        passwordVariable: 'DOCKERHUB_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set -eu
+
+                        # Tag name is provided by Jenkins when building a Tag
+                        RELEASE_TAG="${TAG_NAME}"
+                        echo "Release tag: ${RELEASE_TAG}"
+
+                        echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USER}" --password-stdin
+                        trap 'docker logout >/dev/null 2>&1 || true' EXIT
+
+                        # Detect changes since the previous tag
+                        PREV_TAG=$(git describe --tags --abbrev=0 "${RELEASE_TAG}~1" 2>/dev/null || true)
+                        if [ -n "${PREV_TAG}" ]; then
+                            echo "Comparing with previous tag: ${PREV_TAG}"
+                            CHANGED_FILES=$(git diff --name-only "${PREV_TAG}" "${RELEASE_TAG}")
+                        else
+                            echo "No previous tag found. Comparing with HEAD~1"
+                            if git rev-parse HEAD~1 >/dev/null 2>&1; then
+                                CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+                            else
+                                CHANGED_FILES=$(git show --name-only --format="" HEAD)
+                            fi
+                        fi
+
+                        echo "Changed files:"
+                        echo "${CHANGED_FILES}"
+
+                        BACKEND_SERVICES="cart customer inventory media order product search tax backoffice-bff storefront-bff sampledata"
+                        UI_SERVICES="storefront-ui backoffice-ui swagger-ui"
+                        BUILT_SERVICES=""
+
+                        # Rebuild all backends if common changes occur
+                        BUILD_ALL_BACKENDS=false
+                        if echo "${CHANGED_FILES}" | grep -Eq '^(pom\\.xml|common-library/)'; then
+                            BUILD_ALL_BACKENDS=true
+                            echo "Shared files changed. All backends will be built."
+                        fi
+
+                        # --- Process Backend Services ---
+                        for SERVICE in ${BACKEND_SERVICES}; do
+                            SHOULD_BUILD=false
+                            if [ "${BUILD_ALL_BACKENDS}" = "true" ]; then
+                                SHOULD_BUILD=true
+                            elif echo "${CHANGED_FILES}" | grep -q "^${SERVICE}/"; then
+                                SHOULD_BUILD=true
+                            fi
+
+                            if [ "${SHOULD_BUILD}" = "true" ]; then
+                                echo ">>> Building backend: ${SERVICE}..."
+                                mvn clean package -pl "${SERVICE}" -am -DskipTests -q -Dmaven.repo.local="${WORKSPACE}/.m2/repository"
+
+                                IMAGE="${DOCKERHUB_USER}/yas-${SERVICE}"
+                                docker build -t "${IMAGE}:${RELEASE_TAG}" "./${SERVICE}"
+                                docker push "${IMAGE}:${RELEASE_TAG}"
+                                docker rmi "${IMAGE}:${RELEASE_TAG}" || true
+
+                                # Update tag in values.yaml
+                                yq -i ".yas-app.\"${SERVICE}\".backend.image.tag = \"${RELEASE_TAG}\"" "${K8S_ENV_PATH}"
+                                BUILT_SERVICES="${BUILT_SERVICES} ${SERVICE}"
+                            fi
+                        done
+
+                        # --- Process UI Services ---
+                        for SERVICE in ${UI_SERVICES}; do
+                            if echo "${CHANGED_FILES}" | grep -q "^${SERVICE}/"; then
+                                echo ">>> Building UI: ${SERVICE}..."
+                                IMAGE="${DOCKERHUB_USER}/yas-${SERVICE}"
+                                docker build -t "${IMAGE}:${RELEASE_TAG}" "./${SERVICE}"
+                                docker push "${IMAGE}:${RELEASE_TAG}"
+                                docker rmi "${IMAGE}:${RELEASE_TAG}" || true
+
+                                # Update tag in values.yaml
+                                yq -i ".yas-app.\"${SERVICE}\".image.tag = \"${RELEASE_TAG}\"" "${K8S_ENV_PATH}"
+                                BUILT_SERVICES="${BUILT_SERVICES} ${SERVICE}"
+                            fi
+                        done
+
+                        echo "${BUILT_SERVICES}" > .built_services
+                    '''
+                }
+            }
+        }
+
+        stage('Commit & Push GitOps Changes') {
+            steps {
+                script {
+                    def builtServices = readFile('.built_services').trim()
+                    if (builtServices) {
+                        echo "Commiting updated values for: ${builtServices}"
+                        sshagent([env.GITOPS_REPO_CREDENTIALS_ID]) {
+                            sh """
+                                git config user.name "Jenkins CI/CD"
+                                git config user.email "jenkins@yas.local"
+                                git add k8s/environments/staging/values.yaml
+                                git commit -m "chore: staging auto-deploy services for tag ${env.TAG_NAME} [skip ci]"
+                                git push origin HEAD:feat/advanced-gitops-servicemesh
+                            """
+                        }
+                    } else {
+                        echo "No application changes detected. GitOps update skipped."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'rm -f .built_services || true'
+            sh 'docker logout >/dev/null 2>&1 || true'
+        }
+    }
+}

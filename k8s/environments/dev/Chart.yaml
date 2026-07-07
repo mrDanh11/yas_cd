@@ -1,0 +1,13 @@
+apiVersion: v2
+name: dev-env
+description: Helm chart for deploying the YAS application suite and service mesh in the development environment
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: yas-app
+    version: 0.1.0
+    repository: "file://../../charts/yas-app"
+  - name: yas-service-mesh
+    version: 0.1.0
+    repository: "file://../../charts/yas-service-mesh"

@@ -1,0 +1,23 @@
+{{- if .Values.retries.enabled }}
+{{- range $serviceName := .Values.retries.services }}
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: {{ $serviceName }}-retry
+  namespace: {{ $.Release.Namespace }}
+spec:
+  hosts:
+    - {{ $serviceName }}
+  http:
+    - route:
+        - destination:
+            host: {{ $serviceName }}
+            port:
+              number: 80
+      retries:
+        attempts: {{ $.Values.retries.attempts | default 3 }}
+        perTryTimeout: {{ $.Values.retries.perTryTimeout | default "2s" }}
+        retryOn: {{ $.Values.retries.retryOn | default "5xx,connect-failure,refused-stream" | quote }}
+---
+{{- end }}
+{{- end }}
