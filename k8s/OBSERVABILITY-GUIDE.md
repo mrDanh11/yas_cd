@@ -66,3 +66,80 @@ Bạn có thể giải thích với thầy giáo cơ chế hoạt động đằn
    * Khi `backoffice-bff` gọi sang `product-service`, Agent tự động truyền thông tin Trace ID qua HTTP Header (W3C Trace Context).
    * Các Agent gửi dữ liệu Trace về **OpenTelemetry Collector**.
    * OTel Collector đẩy dữ liệu vào **Tempo** để lưu trữ và truy vấn trên Grafana.
+
+---
+
+## 4. Hướng Dẫn Tự Chạy & Chụp Màn Hình Observability (Từng bước chi tiết)
+
+Để tự chạy và chụp lại các màn hình này từ cụm Kubernetes của bạn phục vụ cho việc nộp bài, hãy làm theo các bước dưới đây:
+
+### Bước 4.1: Triển khai Stack Observability bằng Helm
+Mở terminal, di chuyển vào thư mục `k8s/deploy/` của dự án và chạy lần lượt các lệnh sau:
+
+1. **Thêm và cập nhật các repo Helm cần thiết:**
+   ```bash
+   helm repo add grafana https://grafana.github.io/helm-charts
+   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+   helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+   helm repo update
+   ```
+
+2. **Cài đặt Loki (Quản lý Log):**
+   ```bash
+   helm upgrade --install loki grafana/loki --create-namespace --namespace observability -f ./observability/loki.values.yaml
+   ```
+
+3. **Cài đặt Tempo (Quản lý Tracing):**
+   ```bash
+   helm upgrade --install tempo grafana/tempo --create-namespace --namespace observability -f ./observability/tempo.values.yaml
+   ```
+
+4. **Cài đặt OpenTelemetry Operator & Collector:**
+   ```bash
+   helm upgrade --install opentelemetry-operator open-telemetry/opentelemetry-operator --create-namespace --namespace observability
+   helm upgrade --install opentelemetry-collector ./observability/opentelemetry --create-namespace --namespace observability
+   ```
+
+5. **Cài đặt Promtail (Chuyển log hệ thống sang Loki):**
+   ```bash
+   helm upgrade --install promtail grafana/promtail --create-namespace --namespace observability --values ./observability/promtail.values.yaml
+   ```
+
+6. **Cài đặt Prometheus (Thu thập metrics) và Grafana:**
+   ```bash
+   helm upgrade --install prometheus prometheus-community/kube-prometheus-stack --create-namespace --namespace observability -f ./observability/prometheus.values.yaml
+   ```
+
+7. **Cấu hình liên kết Datasource & Dashboards tự động trên Grafana:**
+   ```bash
+   helm upgrade --install grafana ./observability/grafana --create-namespace --namespace observability --set hostname="grafana.dev.yas.local" --set grafana.username="admin" --set grafana.password="admin" --set postgresql.username="admin" --set postgresql.password="admin"
+   ```
+
+### Bước 4.2: Truy cập giao diện Grafana
+Khi toàn bộ các Pod trong namespace `observability` đã ở trạng thái `Running`, hãy chạy lệnh port-forward dịch vụ Grafana về máy cá nhân của bạn:
+```bash
+kubectl port-forward -n observability svc/prometheus-grafana 3000:80
+```
+* **URL truy cập**: Mở trình duyệt web truy cập `http://localhost:3000`
+* **Tài khoản đăng nhập**: `admin` / `admin`
+
+### Bước 4.3: Sinh dữ liệu chạy thử (Traffic)
+Để đồ thị hiển thị dữ liệu hoạt động, hãy gửi một vài request để kích hoạt tracing bằng cách gọi API của BFF/Backend:
+```bash
+for i in {1..20}; do curl -s http://localhost:8085/api/product/products > /dev/null; sleep 0.5; done
+```
+*(Thay thế port `8085` bằng port chạy thực tế của storefront-bff/backoffice-bff trên máy của bạn).*
+
+### Bước 4.4: Hướng dẫn tìm kiếm và chụp màn hình
+
+#### 1. Chụp màn hình Distributed Tracing (Tempo)
+1. Ở menu bên trái Grafana, nhấp vào biểu tượng **Explore** (hình la bàn 🧭).
+2. Tại danh sách Data source ở trên cùng, chọn nguồn dữ liệu **`Tempo`**.
+3. Tại tab **Query type**, chọn **`Search`** hoặc **`TraceQL`** rồi nhấn **Run query**.
+4. Nhấp vào bất kỳ request nào xuất hiện trong danh sách kết quả (ví dụ: `backoffice-bff-service: GET api`), Grafana sẽ mở giao diện Gantt-chart chi tiết cho phép bạn chụp lại giống như **Ảnh 1**.
+
+#### 2. Chụp màn hình JVM Dashboard (Prometheus)
+1. Ở menu bên trái Grafana, nhấp vào **Dashboards** (biểu tượng hình 🎛️).
+2. Chọn Dashboard tên là **`JVM (Micrometer)`** hoặc **`Spring Boot APM`**.
+3. Chọn dịch vụ (ví dụ: `product-service`) và khoảng thời gian xem là **`Last 15 minutes`**.
+4. Toàn bộ thông số CPU, RAM, Thread, GC và Connection Pool sẽ hiện ra để bạn chụp ảnh giống như **Ảnh 2**.
