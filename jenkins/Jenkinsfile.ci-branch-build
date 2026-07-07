@@ -3,13 +3,16 @@
 // TYPE: Multibranch Pipeline
 //
 // PURPOSE:
-// - Detect services changed in the current commit
+// - Detect changed services
 // - Build affected Maven modules
 // - Build and push Docker images
-// - Image tag for every branch = short commit SHA (8 characters)
-// - Main branch also pushes tag "main"
-// - Supports FORCE_BUILD_ALL parameter
-// - Supports "[build all]" in the latest commit message
+// - Every image gets short commit SHA tag
+// - Main branch also gets tag "main"
+// - FORCE_BUILD_ALL builds every configured service
+//
+// IMPORTANT UI MAPPING:
+// - Docker image yas-storefront-ui is built from ./storefront
+// - Docker image yas-backoffice-ui is built from ./backoffice
 // ============================================================
 
 pipeline {
@@ -126,7 +129,8 @@ pipeline {
                         echo "============================================"
 
                         # ----------------------------------------------------
-                        # Services currently deployed by CD
+                        # Backend services
+                        # Image name and source directory are the same
                         # ----------------------------------------------------
 
                         BACKEND_SERVICES="
@@ -141,10 +145,23 @@ pipeline {
                             backoffice-bff
                         "
 
+                        # ----------------------------------------------------
+                        # UI mapping
+                        #
+                        # Format:
+                        # docker-image-service-name:source-directory
+                        #
+                        # yas-storefront-ui <- ./storefront
+                        # yas-backoffice-ui <- ./backoffice
+                        #
+                        # swagger-ui is not included because the repository
+                        # currently has no root source directory/Dockerfile
+                        # for swagger-ui.
+                        # ----------------------------------------------------
+
                         UI_SERVICES="
-                            storefront-ui
-                            backoffice-ui
-                            swagger-ui
+                            storefront-ui:storefront
+                            backoffice-ui:backoffice
                         "
 
                         # ----------------------------------------------------
@@ -172,7 +189,7 @@ pipeline {
                         fi
 
                         # ----------------------------------------------------
-                        # Rebuild every backend when shared code changes
+                        # Build every backend when shared backend files change
                         # ----------------------------------------------------
 
                         BUILD_ALL_BACKENDS="false"
@@ -193,44 +210,49 @@ pipeline {
                         SKIPPED_SERVICES=""
 
                         # ----------------------------------------------------
-                        # Validate service
+                        # Validate build context
                         # ----------------------------------------------------
 
-                        validate_service() {
-                            SERVICE="$1"
+                        validate_build_context() {
+                            BUILD_CONTEXT="$1"
 
-                            if [ ! -d "${SERVICE}" ]; then
-                                echo "ERROR: Service directory does not exist: ${SERVICE}"
+                            if [ ! -d "${BUILD_CONTEXT}" ]; then
+                                echo "ERROR: Build context does not exist: ${BUILD_CONTEXT}"
                                 exit 1
                             fi
 
-                            if [ ! -f "${SERVICE}/Dockerfile" ]; then
-                                echo "ERROR: Dockerfile does not exist: ${SERVICE}/Dockerfile"
+                            if [ ! -f "${BUILD_CONTEXT}/Dockerfile" ]; then
+                                echo "ERROR: Dockerfile does not exist: ${BUILD_CONTEXT}/Dockerfile"
                                 exit 1
                             fi
                         }
 
                         # ----------------------------------------------------
                         # Build and push Docker image
+                        #
+                        # Argument 1: image service name
+                        # Argument 2: Docker build context
                         # ----------------------------------------------------
 
                         build_and_push_image() {
                             SERVICE="$1"
+                            BUILD_CONTEXT="$2"
                             IMAGE="${DOCKERHUB_USER}/yas-${SERVICE}"
 
-                            validate_service "${SERVICE}"
+                            validate_build_context "${BUILD_CONTEXT}"
 
                             echo ""
                             echo "============================================"
                             echo "BUILDING DOCKER IMAGE"
-                            echo "Service : ${SERVICE}"
-                            echo "Image   : ${IMAGE}:${COMMIT_SHA}"
+                            echo "Service       : ${SERVICE}"
+                            echo "Build context : ${BUILD_CONTEXT}"
+                            echo "Image         : ${IMAGE}:${COMMIT_SHA}"
                             echo "============================================"
 
                             docker build \
                                 --pull \
                                 --tag "${IMAGE}:${COMMIT_SHA}" \
-                                "./${SERVICE}"
+                                "./${BUILD_CONTEXT}"
 
                             docker push "${IMAGE}:${COMMIT_SHA}"
 
@@ -294,7 +316,9 @@ pipeline {
                                     -DskipTests \
                                     -Dmaven.repo.local="${MAVEN_LOCAL_REPO}"
 
-                                build_and_push_image "${SERVICE}"
+                                build_and_push_image \
+                                    "${SERVICE}" \
+                                    "${SERVICE}"
                             else
                                 echo "Skipping backend ${SERVICE}: no relevant changes"
                                 SKIPPED_SERVICES="${SKIPPED_SERVICES} ${SERVICE}"
@@ -305,19 +329,23 @@ pipeline {
                         # Build UI services
                         # ----------------------------------------------------
 
-                        for SERVICE in ${UI_SERVICES}; do
+                        for UI_ITEM in ${UI_SERVICES}; do
+                            SERVICE="${UI_ITEM%%:*}"
+                            BUILD_CONTEXT="${UI_ITEM#*:}"
                             SHOULD_BUILD="false"
 
                             if [ "${IS_FORCE_BUILD}" = "true" ]; then
                                 SHOULD_BUILD="true"
                             elif echo "${CHANGED_FILES}" |
-                                grep -q "^${SERVICE}/"; then
+                                grep -q "^${BUILD_CONTEXT}/"; then
 
                                 SHOULD_BUILD="true"
                             fi
 
                             if [ "${SHOULD_BUILD}" = "true" ]; then
-                                build_and_push_image "${SERVICE}"
+                                build_and_push_image \
+                                    "${SERVICE}" \
+                                    "${BUILD_CONTEXT}"
                             else
                                 echo "Skipping UI ${SERVICE}: no relevant changes"
                                 SKIPPED_SERVICES="${SKIPPED_SERVICES} ${SERVICE}"
@@ -412,7 +440,6 @@ pipeline {
                             backoffice-bff
                             storefront-ui
                             backoffice-ui
-                            swagger-ui
                         "
 
                         echo "${DOCKERHUB_TOKEN}" |
@@ -460,7 +487,7 @@ pipeline {
 
         failure {
             echo 'CI build failed.'
-            echo 'Kiểm tra Maven package, Docker build, Docker login và Docker push logs.'
+            echo 'Kiểm tra Maven package, Docker build, Dockerfile và Docker push logs.'
         }
 
         always {
