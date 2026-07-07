@@ -130,3 +130,9 @@ ArgoCD theo dõi thư mục `k8s/environments/dev` (nhánh `feat/advanced-gitops
      kubectl logs -n dev deployment/storefront-bff -c istio-proxy --tail=150
      ```
 * **Kết quả mong muốn**: Logs hiển thị Envoy sidecar đã tự động thực hiện gửi lại request (retry) 3 lần trước khi quyết định trả về mã lỗi 500 cho client.
+
+---
+
+## 5. Giám Sát Hệ Thống (Observability)
+Để giải thích và chuẩn bị báo cáo cho phần giám sát hệ thống (Distributed Tracing, JVM Metrics qua Grafana Tempo/Prometheus), vui lòng tham khảo tài liệu [OBSERVABILITY-GUIDE.md](./OBSERVABILITY-GUIDE.md).
+
