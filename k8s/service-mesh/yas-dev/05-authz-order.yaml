@@ -6,7 +6,8 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: order
+      app.kubernetes.io/instance: order
+      app.kubernetes.io/name: order
   action: ALLOW
   rules:
     - from:

@@ -6,7 +6,8 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: inventory
+      app.kubernetes.io/instance: inventory
+      app.kubernetes.io/name: inventory
   action: ALLOW
   rules:
     - from:
