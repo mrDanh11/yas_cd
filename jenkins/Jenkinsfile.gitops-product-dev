@@ -98,7 +98,7 @@ PY
                       echo "No GitOps manifest change"
                     else
                       git commit -m "deploy product ${IMAGE_TAG} to dev"
-                      git push origin main
+                      git push origin HEAD:main
                     fi
                 """
             }
