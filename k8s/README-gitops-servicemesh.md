@@ -62,13 +62,86 @@ graph TD
 
 ---
 
-## 2. Triển Khai GitOps (ArgoCD)
+## 2. Chuẩn Bị Môi Trường & Các Công Cụ Cần Tải (Prerequisites)
+
+Nếu bạn chưa cài đặt gì trên máy (đặc biệt trên môi trường Windows), hãy thực hiện lần lượt các bước dưới đây để chuẩn bị môi trường:
+
+### 2.1. Cài đặt các phần mềm cơ bản (CLI & Engine)
+Có hai cách để tải và cài đặt các công cụ cần thiết:
+
+#### Cách 1: Tải trực tiếp từ trang chủ các công cụ
+* **Git** (Quản lý mã nguồn): Tải về từ [Git for Windows](https://git-scm.com/)
+* **Docker Desktop** (Engine ảo hóa chạy container, cần bật WSL 2 backend): Tải về từ [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+* **Minikube** (Kubernetes Cluster local gọn nhẹ chạy trên Docker): Tải về từ [Minikube Start Guide](https://minikube.sigs.k8s.io/docs/start/)
+* **kubectl** (CLI điều khiển và tương tác với Kubernetes): Tải về từ [Kubectl Installation on Windows](https://kubernetes.io/docs/tasks/tools/install-kubectl-windows/)
+* **Helm** (Trình quản lý package của Kubernetes): Tải về từ [Helm Installation](https://helm.sh/docs/intro/install/)
+* **yq** (Bộ xử lý file YAML qua CLI, bắt buộc cho Jenkins pipelines): Tải về từ [yq Release](https://github.com/mikefarah/yq/releases)
+* **istioctl** (CLI quản trị Istio Service Mesh): Tải bản nén cho Windows tại [Istio Releases](https://github.com/istio/istio/releases) (tải file `istio-X.Y.Z-win.zip`), giải nén và thêm thư mục `bin` (có chứa `istioctl.exe`) vào biến môi trường `PATH`.
+* **ArgoCD CLI** (Tùy chọn, dùng quản trị ArgoCD qua terminal): Tải phiên bản mới nhất tại [ArgoCD Releases](https://github.com/argoproj/argo-cd/releases).
+
+#### Cách 2: Cài đặt nhanh qua Windows Package Manager (winget)
+Mở **PowerShell** (hoặc CMD) với quyền Administrator (**Run as Administrator**) và chạy lệnh sau để cài đặt tự động:
+```powershell
+# Cài đặt Git, Docker Desktop, Minikube, kubectl, Helm, yq và ArgoCD CLI
+winget install --id Git.Git -e
+winget install -e --id Docker.DockerDesktop
+winget install -e --id Kubernetes.minikube
+winget install -e --id Kubernetes.kubectl
+winget install -e --id Helm.Helm
+winget install -e --id mikefarah.yq
+winget install -e --id Argoproj.ArgoCD
+```
+*Lưu ý:* Đối với **istioctl**, bạn tải bản cài đặt giải nén như ở Cách 1 hoặc dùng lệnh PowerShell sau để tải trực tiếp phiên bản mới nhất:
+```powershell
+curl -L https://istio.io/downloadIstio | sh -
+```
+
+### 2.2. Khởi tạo Kubernetes Cluster (Minikube)
+1. Khởi động **Docker Desktop** và đợi cho đến khi Docker Engine chạy hoàn tất.
+2. Mở terminal và khởi động cluster Minikube (được cấu hình tối thiểu 16GB RAM và 4 vCPUs để vận hành mượt mà cả 14 microservices cùng Istio):
+   ```bash
+   minikube start --driver=docker --memory=16384 --cpus=4 --disk-size=40g
+   ```
+3. Kích hoạt Addon **Ingress Controller**:
+   ```bash
+   minikube addons enable ingress
+   ```
+
+### 2.3. Cài đặt ArgoCD & Istio Service Mesh lên Cluster
+Sau khi cluster khởi động thành công, tiến hành cài đặt nền tảng ArgoCD và Istio:
+
+#### Bước A: Cài đặt ArgoCD
+```bash
+# 1. Tạo namespace riêng cho ArgoCD
+kubectl create namespace argocd
+
+# 2. Áp dụng file cài đặt từ trang chủ ArgoCD
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# 3. Đợi cho tất cả các pod của ArgoCD sẵn sàng hoạt động
+kubectl wait --namespace argocd --for=condition=ready pod --all --timeout=300s
+```
+
+#### Bước B: Cài đặt Istio Service Mesh
+```bash
+# 1. Thực hiện cài đặt Istio sử dụng profile demo (chứa sẵn Ingress/Egress gateway)
+istioctl install --set profile=demo -y
+
+# 2. Tạo namespace dev để triển khai ứng dụng YAS
+kubectl create namespace dev
+
+# 3. Bật tự động tiêm (inject) sidecar proxy (Envoy) vào namespace dev
+kubectl label namespace dev istio-injection=enabled
+```
+
+---
+
+## 3. Triển Khai GitOps (ArgoCD)
 
 ArgoCD theo dõi thư mục `k8s/environments/dev` (nhánh `feat/advanced-gitops-servicemesh`) để đồng bộ toàn bộ ứng dụng và cấu hình mesh lên cluster K8s.
 
-### Các bước cài đặt:
-1. Đảm bảo cluster đã cài đặt **ArgoCD** và **Istio**.
-2. Apply các tệp cấu hình Application để ArgoCD tự động tạo các tài nguyên:
+### Các bước triển khai ứng dụng:
+1. Apply các tệp cấu hình Application để ArgoCD tự động tạo các tài nguyên trên cluster:
    ```bash
    kubectl apply -f k8s/argocd/dev-application.yaml
    kubectl apply -f k8s/argocd/staging-application.yaml
@@ -76,7 +149,7 @@ ArgoCD theo dõi thư mục `k8s/environments/dev` (nhánh `feat/advanced-gitops
 
 ---
 
-## 3. Quy Trình Tự Động Hóa (Jenkins Pipelines)
+## 4. Quy Trình Tự Động Hóa (Jenkins Pipelines)
 
 1. **Jenkinsfile.dev-gitops**: Khi code push lên `main`, pipeline tự động build image, push lên Docker Hub với tag là commit SHA, sau đó dùng `yq` sửa tag trong `k8s/environments/dev/values.yaml` và commit ngược lại Git để kích hoạt ArgoCD tự đồng bộ.
 2. **Jenkinsfile.staging-gitops**: Kích hoạt bằng Git tag (`v*`), tự động build và gán tag release tương ứng cho các service thay đổi, đồng bộ sang môi trường `staging`.
@@ -84,7 +157,7 @@ ArgoCD theo dõi thư mục `k8s/environments/dev` (nhánh `feat/advanced-gitops
 
 ---
 
-## 4. Hướng Dẫn Kịch Bản Kiểm Thử (Cách Test)
+## 5. Hướng Dẫn Kịch Bản Kiểm Thử (Cách Test)
 
 ### Kịch Bản 1: Kiểm tra mTLS STRICT (Bảo mật đường truyền)
 * **Mục tiêu**: Xác thực rằng các kết nối không thông qua Istio Sidecar (không mã hóa mTLS) sẽ bị từ chối truy cập vào các service nội bộ.
@@ -130,3 +203,9 @@ ArgoCD theo dõi thư mục `k8s/environments/dev` (nhánh `feat/advanced-gitops
      kubectl logs -n dev deployment/storefront-bff -c istio-proxy --tail=150
      ```
 * **Kết quả mong muốn**: Logs hiển thị Envoy sidecar đã tự động thực hiện gửi lại request (retry) 3 lần trước khi quyết định trả về mã lỗi 500 cho client.
+
+---
+
+## 6. Giám Sát Hệ Thống (Observability)
+Để giải thích và chuẩn bị báo cáo cho phần giám sát hệ thống (Distributed Tracing, JVM Metrics qua Grafana Tempo/Prometheus), vui lòng tham khảo tài liệu [OBSERVABILITY-GUIDE.md](./OBSERVABILITY-GUIDE.md).
+
