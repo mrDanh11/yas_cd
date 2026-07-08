@@ -28,6 +28,20 @@ pipeline {
             }
         }
 
+        stage('Build product jar') {
+            steps {
+                sh """
+                    mvn clean package \
+                      -pl product \
+                      -am \
+                      -DskipTests \
+                      -Dmaven.repo.local="${WORKSPACE}/.m2/repository"
+
+                    ls -lh product/target/*.jar
+                """
+            }
+        }
+
         stage('Build Docker image') {
             steps {
                 sh """
