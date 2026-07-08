@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: yas-staging-cart
+  namespace: argocd
+spec:
+  project: yas-staging
+
+  source:
+    repoURL: https://github.com/mrDanh11/yas_cd.git
+    targetRevision: main
+    path: k8s/charts/cart
+    helm:
+      releaseName: cart
+      parameters:
+        - name: backend.image.repository
+          value: mrdanh/yas-cart
+        - name: backend.image.tag
+          value: main
+        - name: backend.image.pullPolicy
+          value: Always
+        - name: backend.ingress.className
+          value: traefik
+        - name: backend.resources.requests.memory
+          value: 200Mi
+        - name: backend.resources.requests.cpu
+          value: 100m
+        - name: backend.resources.limits.memory
+          value: 350Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: yas-staging
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
