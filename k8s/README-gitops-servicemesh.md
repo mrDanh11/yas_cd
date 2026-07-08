@@ -140,7 +140,31 @@ kubectl label namespace dev istio-injection=enabled
 
 ArgoCD theo dõi thư mục `k8s/environments/dev` (nhánh `feat/advanced-gitops-servicemesh`) để đồng bộ toàn bộ ứng dụng và cấu hình mesh lên cluster K8s.
 
-### Các bước triển khai ứng dụng:
+### 3.1. Hướng dẫn truy cập vào giao diện Web UI của ArgoCD (Local)
+
+Theo mặc định, server ArgoCD không được mở cổng ra ngoài cluster. Để truy cập giao diện Web UI của ArgoCD:
+
+1. **Mở cổng kết nối (Port Forwarding)**:
+   Mở một cửa sổ Terminal/PowerShell mới và chạy lệnh sau (giữ terminal này chạy liên tục để duy trì kết nối):
+   ```bash
+   kubectl port-forward svc/argocd-server -n argocd 8080:443
+   ```
+2. **Truy cập qua trình duyệt**:
+   Mở trình duyệt web của bạn và truy cập địa chỉ: `https://localhost:8080`
+   *(Nếu trình duyệt cảnh báo kết nối HTTPS không an toàn do SSL tự ký, hãy chọn "Proceed to localhost (unsafe)" / "Nâng cao -> Tiếp tục truy cập").*
+3. **Lấy mật khẩu đăng nhập**:
+   * **Tài khoản**: `admin`
+   * **Mật khẩu**: Được tự động sinh ra và lưu trong Secret của Kubernetes. Để lấy mật khẩu này:
+     * *Trên Windows PowerShell:*
+       ```powershell
+       [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}")))
+       ```
+     * *Trên Linux/macOS/Git Bash:*
+       ```bash
+       kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 --decode
+       ```
+
+### 3.2. Các bước triển khai ứng dụng:
 1. Apply các tệp cấu hình Application để ArgoCD tự động tạo các tài nguyên trên cluster:
    ```bash
    kubectl apply -f k8s/argocd/dev-application.yaml
