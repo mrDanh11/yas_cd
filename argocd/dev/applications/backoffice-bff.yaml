@@ -11,6 +11,7 @@ spec:
     targetRevision: main
     path: k8s/charts/backoffice-bff
     helm:
+      releaseName: backoffice-bff
       parameters:
         - name: backend.image.repository
           value: mrdanh/yas-backoffice-bff

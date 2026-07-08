@@ -11,6 +11,7 @@ spec:
     targetRevision: main
     path: k8s/charts/tax
     helm:
+      releaseName: tax
       parameters:
         - name: backend.image.repository
           value: mrdanh/yas-tax

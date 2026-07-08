@@ -11,6 +11,7 @@ spec:
     targetRevision: main
     path: k8s/charts/storefront-ui
     helm:
+      releaseName: storefront-ui
       parameters:
         - name: ui.image.repository
           value: mrdanh/yas-storefront-ui

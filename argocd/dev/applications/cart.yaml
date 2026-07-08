@@ -11,6 +11,7 @@ spec:
     targetRevision: main
     path: k8s/charts/cart
     helm:
+      releaseName: cart
       parameters:
         - name: backend.image.repository
           value: mrdanh/yas-cart

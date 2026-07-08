@@ -11,6 +11,7 @@ spec:
     targetRevision: main
     path: k8s/charts/storefront-bff
     helm:
+      releaseName: storefront-bff
       parameters:
         - name: backend.image.repository
           value: mrdanh/yas-storefront-bff

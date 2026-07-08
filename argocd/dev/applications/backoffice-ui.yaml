@@ -11,6 +11,7 @@ spec:
     targetRevision: main
     path: k8s/charts/backoffice-ui
     helm:
+      releaseName: backoffice-ui
       parameters:
         - name: ui.image.repository
           value: mrdanh/yas-backoffice-ui

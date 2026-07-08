@@ -11,6 +11,7 @@ spec:
     targetRevision: main
     path: k8s/charts/inventory
     helm:
+      releaseName: inventory
       parameters:
         - name: backend.image.repository
           value: mrdanh/yas-inventory
