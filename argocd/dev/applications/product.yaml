@@ -16,7 +16,7 @@ spec:
         - name: backend.image.repository
           value: mrdanh/yas-product
         - name: backend.image.tag
-          value: main
+          value: 605ce7d5
         - name: backend.image.pullPolicy
           value: Always
         - name: backend.ingress.className
