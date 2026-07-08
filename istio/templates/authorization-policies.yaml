@@ -1,0 +1,41 @@
+{{- if .Values.authorization.enabled }}
+
+{{- if .Values.authorization.defaultDeny }}
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: default-deny-all
+  namespace: {{ .Release.Namespace }}
+spec:
+  # Empty spec acts as a default-deny for all traffic in the namespace
+  {}
+---
+{{- end }}
+
+{{- range $rule := .Values.authorization.rules }}
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ $rule.name }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ $rule.targetApp }}
+  action: ALLOW
+  rules:
+    {{- if has "*" $rule.allowedPrincipals }}
+    # Allow all traffic (including public/unauthenticated external ingress)
+    - {}
+    {{- else }}
+    - from:
+        - source:
+            principals:
+              {{- range $principal := $rule.allowedPrincipals }}
+              - {{ tpl $principal $ | quote }}
+              {{- end }}
+    {{- end }}
+---
+{{- end }}
+
+{{- end }}

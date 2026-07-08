@@ -1,0 +1,114 @@
+# Default values for yas-service-mesh (Optimized for 14 services)
+
+mtls:
+  enabled: true
+  mode: STRICT
+
+authorization:
+  enabled: true
+  defaultDeny: true
+  rules:
+    # --- Public Edge Services (Allow unauthenticated traffic from Ingress) ---
+    - name: allow-storefront-ui
+      targetApp: storefront-ui
+      allowedPrincipals:
+        - "*"
+    - name: allow-backoffice-ui
+      targetApp: backoffice-ui
+      allowedPrincipals:
+        - "*"
+    - name: allow-swagger-ui
+      targetApp: swagger-ui
+      allowedPrincipals:
+        - "*"
+    - name: allow-keycloak
+      targetApp: keycloak
+      allowedPrincipals:
+        - "*"
+    - name: allow-storefront-bff
+      targetApp: storefront-bff
+      allowedPrincipals:
+        - "*"
+    - name: allow-backoffice-bff
+      targetApp: backoffice-bff
+      allowedPrincipals:
+        - "*"
+
+    # --- Internal Backend Services (Restricted to specific service accounts) ---
+    - name: allow-product
+      targetApp: product
+      allowedPrincipals:
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/storefront-bff"
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/backoffice-bff"
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/search"
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/sampledata"
+
+    - name: allow-cart
+      targetApp: cart
+      allowedPrincipals:
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/storefront-bff"
+
+    - name: allow-order
+      targetApp: order
+      allowedPrincipals:
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/storefront-bff"
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/backoffice-bff"
+
+    - name: allow-customer
+      targetApp: customer
+      allowedPrincipals:
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/storefront-bff"
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/backoffice-bff"
+
+    - name: allow-inventory
+      targetApp: inventory
+      allowedPrincipals:
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/backoffice-bff"
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/product"
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/order"
+
+    - name: allow-media
+      targetApp: media
+      allowedPrincipals:
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/product"
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/storefront-bff"
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/backoffice-bff"
+
+    - name: allow-search
+      targetApp: search
+      allowedPrincipals:
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/storefront-bff"
+
+    - name: allow-tax
+      targetApp: tax
+      allowedPrincipals:
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/order"
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/backoffice-bff"
+
+    # --- Databases and Middleware (Allow any service in this namespace) ---
+    - name: allow-postgres
+      targetApp: postgres
+      allowedPrincipals:
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/*"
+
+    - name: allow-kafka
+      targetApp: kafka
+      allowedPrincipals:
+        - "cluster.local/ns/{{ .Release.Namespace }}/sa/*"
+
+retries:
+  enabled: true
+  attempts: 3
+  perTryTimeout: 2s
+  retryOn: "5xx,connect-failure,refused-stream"
+  services:
+    - product
+    - cart
+    - order
+    - inventory
+    - customer
+    - tax
+    - media
+    - search
+    - storefront-bff
+    - backoffice-bff
