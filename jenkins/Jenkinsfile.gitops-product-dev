@@ -1,0 +1,93 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKERHUB_USER = 'mrdanh'
+        SERVICE_NAME = 'product'
+        APP_FILE = 'argocd/dev/applications/product.yaml'
+        IMAGE_REPO = 'mrdanh/yas-product'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Resolve image tag') {
+            steps {
+                script {
+                    env.IMAGE_TAG = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Image tag: ${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('Build Docker image') {
+            steps {
+                sh """
+                    docker build \
+                      -t ${IMAGE_REPO}:${IMAGE_TAG} \
+                      -f ${SERVICE_NAME}/Dockerfile \
+                      ${SERVICE_NAME}
+                """
+            }
+        }
+
+        stage('Push Docker image') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKERHUB_USERNAME',
+                        passwordVariable: 'DOCKERHUB_PASSWORD'
+                    )
+                ]) {
+                    sh """
+                        echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+                        docker push ${IMAGE_REPO}:${IMAGE_TAG}
+                    """
+                }
+            }
+        }
+
+        stage('Update GitOps manifest') {
+            steps {
+                sh """
+                    python3 - <<'PY'
+from pathlib import Path
+
+path = Path("${APP_FILE}")
+text = path.read_text()
+
+lines = text.splitlines()
+for i, line in enumerate(lines):
+    if line.strip() == "- name: backend.image.tag":
+        lines[i + 1] = "          value: ${IMAGE_TAG}"
+        break
+
+path.write_text("\\n".join(lines) + "\\n")
+PY
+
+                    git config user.email "jenkins@local"
+                    git config user.name "Jenkins"
+
+                    git status
+                    git add ${APP_FILE}
+
+                    if git diff --cached --quiet; then
+                      echo "No GitOps manifest change"
+                    else
+                      git commit -m "deploy product ${IMAGE_TAG} to dev"
+                      git push origin main
+                    fi
+                """
+            }
+        }
+    }
+}
