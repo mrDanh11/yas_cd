@@ -72,11 +72,18 @@ pipeline {
 
         stage('Update GitOps manifest') {
             steps {
-                sh """
-                    python3 - <<'PY'
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'github-credentials',
+                        usernameVariable: 'GIT_USERNAME',
+                        passwordVariable: 'GIT_TOKEN'
+                    )
+                ]) {
+                    sh """
+                        python3 - <<'PY'
 from pathlib import Path
 
-path = Path("${APP_FILE}")
+path = Path("argocd/dev/applications/product.yaml")
 text = path.read_text()
 
 lines = text.splitlines()
@@ -88,19 +95,21 @@ for i, line in enumerate(lines):
 path.write_text("\\n".join(lines) + "\\n")
 PY
 
-                    git config user.email "jenkins@local"
-                    git config user.name "Jenkins"
+                        git config user.email "jenkins@local"
+                        git config user.name "Jenkins"
 
-                    git status
-                    git add ${APP_FILE}
+                        git status
+                        git add ${APP_FILE}
 
-                    if git diff --cached --quiet; then
-                      echo "No GitOps manifest change"
-                    else
-                      git commit -m "deploy product ${IMAGE_TAG} to dev"
-                      git push origin HEAD:main
-                    fi
-                """
+                        if git diff --cached --quiet; then
+                          echo "No GitOps manifest change"
+                        else
+                          git commit -m "deploy product ${IMAGE_TAG} to dev"
+                          git remote set-url origin https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/mrDanh11/yas_cd.git
+                          git push origin HEAD:main
+                        fi
+                    """
+                }
             }
         }
     }
