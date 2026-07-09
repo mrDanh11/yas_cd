@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flaky
+  namespace: yas-dev
+  labels:
+    app: flaky
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flaky
+  template:
+    metadata:
+      labels:
+        app: flaky
+    spec:
+      containers:
+        - name: flaky
+          image: python:3.12-alpine
+          ports:
+            - containerPort: 8080
+          command:
+            - sh
+            - -c
+            - |
+              cat > /tmp/server.py <<'PY'
+              from http.server import BaseHTTPRequestHandler, HTTPServer
+
+              counter = {"count": 0}
+
+              class Handler(BaseHTTPRequestHandler):
+                  def do_GET(self):
+                      counter["count"] += 1
+                      attempt = counter["count"]
+
+                      if self.path == "/flaky":
+                          if attempt % 2 == 1:
+                              self.send_response(500)
+                              self.end_headers()
+                              self.wfile.write(f"temporary error, attempt={attempt}\n".encode())
+                          else:
+                              self.send_response(200)
+                              self.end_headers()
+                              self.wfile.write(f"success after retry, attempt={attempt}\n".encode())
+                      else:
+                          self.send_response(200)
+                          self.end_headers()
+                          self.wfile.write(b"flaky service is running\n")
+
+                  def log_message(self, format, *args):
+                      print("%s - - [%s] %s" % (self.client_address[0], self.log_date_time_string(), format % args), flush=True)
+
+              HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+              PY
+              python /tmp/server.py
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flaky
+  namespace: yas-dev
+spec:
+  selector:
+    app: flaky
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: flaky-retry
+  namespace: yas-dev
+spec:
+  hosts:
+    - flaky
+    - flaky.yas-dev.svc.cluster.local
+  http:
+    - timeout: 5s
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: 5xx,connect-failure,refused-stream,gateway-error
+      route:
+        - destination:
+            host: flaky.yas-dev.svc.cluster.local
+            port:
+              number: 80
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-flaky-from-cart
+  namespace: yas-dev
+spec:
+  selector:
+    matchLabels:
+      app: flaky
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/yas-dev/sa/cart
