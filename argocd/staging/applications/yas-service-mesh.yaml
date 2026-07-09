@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: yas-staging-service-mesh
+  namespace: argocd
+spec:
+  project: yas-staging
+
+  source:
+    repoURL: https://github.com/mrDanh11/yas_cd.git
+    targetRevision: main
+    path: istio
+    helm:
+      releaseName: yas-service-mesh
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: yas-staging
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,13 @@
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-metrics-and-health
+  namespace: yas-dev
+spec:
+  # No selector means it applies to all workloads in the yas-dev namespace
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            ports: ["8090"]
+            paths: ["/actuator/prometheus", "/actuator/health/**"]

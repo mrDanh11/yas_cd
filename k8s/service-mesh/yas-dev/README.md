@@ -199,6 +199,7 @@ kubectl apply -f 03-authz-product.yaml
 kubectl apply -f 04-authz-inventory.yaml
 kubectl apply -f 05-authz-order.yaml
 kubectl apply -f 06-vs-product-retry.yaml
+kubectl apply -f 08-authz-metrics-health.yaml
 ```
 
 ## 8. Test AuthorizationPolicy
