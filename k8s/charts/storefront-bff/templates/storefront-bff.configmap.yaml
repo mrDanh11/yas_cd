@@ -1,9 +1,60 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: storefront-bff-configmap
+  name: storefront-bff-extra-configmap
+  namespace: {{ .Release.Namespace }}
   annotations:
     reloader.stakater.com/match: "true"
 data:
-  backoffice-bff-application.yaml: |
+  storefront-bff-extra-config.yaml: |
+    {{- if .Values.storefrontBffApplicationConfig }}
     {{- toYaml .Values.storefrontBffApplicationConfig | nindent 4 }}
+    {{- else }}
+    # Default config
+    {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: yas-gateway-routes-config-configmap
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    reloader.stakater.com/match: "true"
+data:
+  gateway-routes-config.yaml: |
+    spring:
+      cloud:
+        gateway:
+          routes:
+            - id: product
+              uri: http://product:80
+              predicates:
+                - Path=/api/v1/products/**
+            - id: cart
+              uri: http://cart:80
+              predicates:
+                - Path=/api/v1/cart/**
+            - id: inventory
+              uri: http://inventory:80
+              predicates:
+                - Path=/api/v1/inventory/**
+            - id: order
+              uri: http://order:80
+              predicates:
+                - Path=/api/v1/orders/**
+            - id: customer
+              uri: http://customer:80
+              predicates:
+                - Path=/api/v1/customers/**
+            - id: location
+              uri: http://location:80
+              predicates:
+                - Path=/api/v1/locations/**
+            - id: media
+              uri: http://media:80
+              predicates:
+                - Path=/api/v1/media/**
+            - id: tax
+              uri: http://tax:80
+              predicates:
+                - Path=/api/v1/tax/**
