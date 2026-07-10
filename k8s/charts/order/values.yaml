@@ -6,6 +6,10 @@ backend:
   nameOverride: order
   fullnameOverride: order
   databaseName: order
+
+  extraEnvs:
+    - name: MANAGEMENT_SERVER_PORT
+      value: "8090"
   ingress:
     enabled: false
   extraVolumes:
