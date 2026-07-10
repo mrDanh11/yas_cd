@@ -18,3 +18,11 @@ spring:
               uri: http://storefront-nextjs:3000
               predicates:
                 - Path=/**
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info
+          - gateway
